@@ -1,0 +1,39 @@
+{
+  "workspace": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace",
+  "defaultProject": "headc-fw",
+  "buildConfig": "HardwareDebug",
+  "buildMode": "make",
+  "toolchain": {
+    "ccrxPath": "C:/Program Files (x86)/Renesas/RX/3_7_0/bin",
+    "e2studioPath": "C:/Renesas/e2_studio/eclipse",
+    "makePath": null
+  },
+  "flash": {
+    "debugger": "E2Lite",
+    "device": "R5F5651E",
+    "gdbExecutable": "rx-elf-gdb",
+    "gdbPort": 61234,
+    "inputClock": "24.0",
+    "idCode": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+  },
+  "devices": {
+    "R5F5651E": {
+      "family": "RX651",
+      "romSize": 2097152,
+      "ramSize": 655360,
+      "dataFlashSize": 32768,
+      "romRange": "FFF00000-FFFFFFFF",
+      "ramRange": "00000000-0009FFFF",
+      "dataFlashRange": "00100000-00107FFF"
+    },
+    "R5F565NE": {
+      "family": "RX65N",
+      "romSize": 2097152,
+      "ramSize": 655360,
+      "dataFlashSize": 32768,
+      "romRange": "FFF00000-FFFFFFFF",
+      "ramRange": "00000000-0009FFFF",
+      "dataFlashRange": "00100000-00107FFF"
+    }
+  }
+}

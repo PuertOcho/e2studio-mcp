@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "e2studio-mcp": {
+      "type": "stdio",
+      "command": "py",
+      "args": [
+        "-3",
+        "-m",
+        "e2studio_mcp.server"
+      ],
+      "cwd": "${workspaceFolder}/e2Studio_2024_workspace/e2studio-mcp/src",
+      "env": {
+        "E2STUDIO_MCP_CONFIG": "${workspaceFolder}/e2Studio_2024_workspace/e2studio-mcp/e2studio-mcp.json"
+      }
+    }
+  }
+}
