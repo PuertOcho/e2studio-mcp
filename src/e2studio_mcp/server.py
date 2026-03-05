@@ -32,6 +32,39 @@ mcp = FastMCP(
 )
 
 
+# ─── Helpers ──────────────────────────────────────────────────
+
+def _resolve_device_capacities(proj_path: Path) -> tuple[int, int, int]:
+    """Resolve ROM/RAM/DataFlash capacities for a project.
+
+    Reads the project's .cproject to get the actual device name,
+    then looks it up in cfg.devices (also tries stripping _DUAL suffix).
+    Falls back to global flash.device config.
+    """
+    device_name = None
+    cproject = proj_path / ".cproject"
+    if cproject.exists():
+        try:
+            pcfg = project_mod.parse_cproject(cproject)
+            device_name = pcfg.device
+        except Exception:
+            pass
+
+    # Try exact match, then strip _DUAL suffix
+    device_info = None
+    if device_name:
+        device_info = cfg.get_device_info(device_name)
+        if not device_info and device_name.endswith("_DUAL"):
+            device_info = cfg.get_device_info(device_name.removesuffix("_DUAL"))
+    if not device_info:
+        device_info = cfg.get_device_info()  # fallback to global flash.device
+
+    rom_cap = device_info.rom_size if device_info else 2097152
+    ram_cap = device_info.ram_size if device_info else 655360
+    df_cap = device_info.data_flash_size if device_info else 32768
+    return rom_cap, ram_cap, df_cap
+
+
 # ═══════════════════════════════════════════════════════════════
 # BUILD TOOLS
 # ═══════════════════════════════════════════════════════════════
@@ -142,10 +175,7 @@ def get_build_size(project: str = "", config: str = "") -> dict:
     if not map_files:
         return {"error": f"No .map file found in {build_dir}"}
 
-    device_info = cfg.get_device_info()
-    rom_cap = device_info.rom_size if device_info else 2097152
-    ram_cap = device_info.ram_size if device_info else 655360
-    df_cap = device_info.data_flash_size if device_info else 32768
+    rom_cap, ram_cap, df_cap = _resolve_device_capacities(proj_path)
 
     return mapfile_mod.get_build_size(
         map_files[0],
@@ -216,10 +246,7 @@ def get_map_summary(project: str = "", config: str = "") -> dict:
     if not map_files:
         return {"error": f"No .map file found in {build_dir}"}
 
-    device_info = cfg.get_device_info()
-    rom_cap = device_info.rom_size if device_info else 2097152
-    ram_cap = device_info.ram_size if device_info else 655360
-    df_cap = device_info.data_flash_size if device_info else 32768
+    rom_cap, ram_cap, df_cap = _resolve_device_capacities(proj_path)
 
     return mapfile_mod.get_map_summary(
         map_files[0],

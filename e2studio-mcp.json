@@ -6,7 +6,7 @@
   "toolchain": {
     "ccrxPath": "C:/Program Files (x86)/Renesas/RX/3_7_0/bin",
     "e2studioPath": "C:/Renesas/e2_studio/eclipse",
-    "makePath": null
+    "makePath": "C:/Renesas/e2_studio/eclipse/plugins/com.renesas.ide.exttools.gnumake.win32.x86_64_4.3.1.v20240909-0854/mk"
   },
   "flash": {
     "debugger": "E2Lite",
@@ -33,6 +33,15 @@
       "dataFlashSize": 32768,
       "romRange": "FFF00000-FFFFFFFF",
       "ramRange": "00000000-0009FFFF",
+      "dataFlashRange": "00100000-00107FFF"
+    },
+    "R5F572NNDxBD": {
+      "family": "RX72N",
+      "romSize": 4194304,
+      "ramSize": 1048576,
+      "dataFlashSize": 32768,
+      "romRange": "FFC00000-FFFFFFFF",
+      "ramRange": "00000000-000FFFFF",
       "dataFlashRange": "00100000-00107FFF"
     }
   }
