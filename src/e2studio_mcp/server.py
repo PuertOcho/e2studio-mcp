@@ -294,8 +294,9 @@ def flash_firmware(
 ) -> dict:
     """Flash firmware (.mot) to target via E2 Lite debugger.
 
-    Starts e2-server-gdb, connects rx-elf-gdb, loads the .mot file,
-    verifies, and disconnects.
+    Starts e2-server-gdb, connects via direct RSP (GDB Remote Serial Protocol),
+    writes flash memory using M-packets from the parsed .mot S-Record file,
+    verifies via read-back, and disconnects.
 
     Args:
         project: Project name (default: headc-fw)
@@ -303,7 +304,7 @@ def flash_firmware(
         erase_data_flash: Whether to erase data flash before programming
 
     Returns:
-        Flash result with success status, duration, and flashed file path.
+        Flash result with success, bytesWritten, chunksWritten, verified, durationMs.
     """
     return flash_mod.flash_firmware(
         cfg,
