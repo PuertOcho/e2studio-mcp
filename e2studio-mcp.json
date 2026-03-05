@@ -14,7 +14,9 @@
     "gdbExecutable": "rx-elf-gdb",
     "gdbPort": 61234,
     "inputClock": "24.0",
-    "idCode": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+    "idCode": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+    "debugToolsPath": "C:/Users/anton/.eclipse/com.renesas.platform_1435879475/DebugComp/RX",
+    "python3BinPath": "C:/Renesas/e2_studio/eclipse/plugins/com.renesas.python3.win32.x86_64_3.10.10.202303141009/bin"
   },
   "devices": {
     "R5F5651E": {

@@ -314,16 +314,22 @@ def flash_firmware(
 
 
 @mcp.tool()
-def debug_connect() -> dict:
+def debug_connect(project: str = "", launch_file: str = "") -> dict:
     """Start e2-server-gdb and prepare for debugging/flashing.
 
-    Launches the GDB server with E2 Lite configuration.
+    Parses the project's .launch file for device-specific parameters.
     The server stays running until debug_disconnect is called.
 
+    Args:
+        project: Project name (default: headc-fw). Determines .launch file and device config.
+        launch_file: Specific .launch file name (default: auto-detect *HardwareDebug*)
+
     Returns:
-        Connection status with port, device, and server PID.
+        Connection status with port, device, project, and server PID.
     """
-    return flash_mod.debug_connect(cfg)
+    return flash_mod.debug_connect(
+        cfg, project=project or None, launch_file=launch_file or None,
+    )
 
 
 @mcp.tool()

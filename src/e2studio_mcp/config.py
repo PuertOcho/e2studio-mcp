@@ -24,6 +24,8 @@ class FlashConfig:
     gdb_port: int = 61234
     input_clock: str = "24.0"
     id_code: str = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+    debug_tools_path: str = ""
+    python3_bin_path: str = ""
 
 
 @dataclass
@@ -93,6 +95,8 @@ def _parse_flash(data: dict[str, Any]) -> FlashConfig:
         gdb_port=data.get("gdbPort", 61234),
         input_clock=data.get("inputClock", "24.0"),
         id_code=data.get("idCode", "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+        debug_tools_path=data.get("debugToolsPath", ""),
+        python3_bin_path=data.get("python3BinPath", ""),
     )
 
 
