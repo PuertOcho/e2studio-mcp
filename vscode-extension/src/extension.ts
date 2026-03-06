@@ -3,10 +3,12 @@ import * as path from "path";
 import { ADMConsole } from "./admConsole";
 import { StatusBar } from "./statusBar";
 import { loadConfig, ExtensionConfig } from "./config";
+import { E2StudioRxViewProvider } from "./webviewProvider";
 
 let admConsole: ADMConsole | undefined;
 let statusBar: StatusBar | undefined;
 let config: ExtensionConfig | undefined;
+let viewProvider: E2StudioRxViewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("e2 Studio RX");
@@ -45,6 +47,68 @@ export function activate(context: vscode.ExtensionContext): void {
   admConsole = new ADMConsole(context);
   context.subscriptions.push(admConsole);
 
+  // Webview sidebar panel
+  viewProvider = new E2StudioRxViewProvider(
+    context.extensionUri,
+    config,
+    (cmd, args) => {
+      switch (cmd) {
+        case "selectProject":
+          if (args?.project) {
+            statusBar?.setProject(args.project);
+            outputChannel.appendLine(
+              `[e2studio-rx] Project: ${args.project}`
+            );
+          }
+          break;
+        case "selectDebugger":
+          if (args?.debugger) {
+            const label =
+              args.debugger === "E2LITE"
+                ? "E2 Lite"
+                : args.debugger === "JLINK"
+                  ? "J-Link"
+                  : args.debugger;
+            statusBar?.setDebugger(label);
+            outputChannel.appendLine(
+              `[e2studio-rx] Debugger: ${label}`
+            );
+          }
+          break;
+        case "build":
+          vscode.commands.executeCommand("e2studio-rx.build");
+          break;
+        case "clean":
+          vscode.commands.executeCommand("e2studio-rx.clean");
+          break;
+        case "rebuild":
+          vscode.commands.executeCommand("e2studio-rx.rebuild");
+          break;
+        case "flash":
+          vscode.commands.executeCommand("e2studio-rx.flash");
+          break;
+        case "debug":
+          vscode.debug.startDebugging(undefined, "headc-fw RX651 (E2 Lite)");
+          break;
+        case "openConsole":
+          admConsole?.startManual();
+          break;
+      }
+    }
+  );
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      E2StudioRxViewProvider.viewType,
+      viewProvider
+    )
+  );
+
+  // Pipe console output to webview
+  admConsole.onOutput((text) => {
+    viewProvider?.appendConsole(text);
+  });
+
   // Commands
   context.subscriptions.push(
     vscode.commands.registerCommand("e2studio-rx.openConsole", () => {
@@ -54,8 +118,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("e2studio-rx.selectProject", async () => {
-      // Sprint 2 — full implementation with .cproject scanning
-      const projects = ["headc-fw", "headc_v2_fw", "headc-v2-bloader"];
+      const projects = viewProvider
+        ? (viewProvider as any).projects.map((p: any) => p.name)
+        : ["headc-fw", "headc_v2_fw", "headc-v2-bloader"];
       const pick = await vscode.window.showQuickPick(projects, {
         placeHolder: "Select e2 Studio project",
       });

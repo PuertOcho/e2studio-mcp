@@ -14,12 +14,18 @@ export class ADMConsole implements vscode.Disposable {
   private proc: ChildProcess | undefined;
   private context: vscode.ExtensionContext;
   private starting = false;
+  private outputListeners: Array<(text: string) => void> = [];
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
     this.channel = vscode.window.createOutputChannel(
       "Renesas Virtual Console"
     );
+  }
+
+  /** Register a listener that receives console output (used by webview). */
+  onOutput(listener: (text: string) => void): void {
+    this.outputListeners.push(listener);
   }
 
   /**
@@ -109,7 +115,11 @@ export class ADMConsole implements vscode.Disposable {
     }
 
     this.proc.stdout?.on("data", (chunk: Buffer) => {
-      this.channel.append(chunk.toString("utf-8"));
+      const text = chunk.toString("utf-8");
+      this.channel.append(text);
+      for (const listener of this.outputListeners) {
+        listener(text);
+      }
     });
 
     this.proc.stderr?.on("data", (chunk: Buffer) => {

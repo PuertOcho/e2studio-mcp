@@ -14,13 +14,32 @@
   ],
   "activationEvents": [
     "workspaceContains:**/.cproject",
-    "onDebugResolve:renesas-hardware"
+    "onDebugResolve:renesas-hardware",
+    "onView:e2studio-rx.panel"
   ],
   "extensionDependencies": [
     "renesaselectronicscorporation.renesas-debug"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "e2studio-rx",
+          "title": "e2 Studio RX",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "e2studio-rx": [
+        {
+          "type": "webview",
+          "id": "e2studio-rx.panel",
+          "name": "e2 Studio RX"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "e2studio-rx.selectProject",
