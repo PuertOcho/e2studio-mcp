@@ -532,7 +532,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
 <body>
   <!-- MCP TOGGLE -->
   <div class="mcp-toggle-row">
-    <span class="mcp-toggle-label">&#x26A1; MCP Server</span>
+    <span class="mcp-toggle-label">MCP Server</span>
     <label class="toggle-switch">
       <input type="checkbox" id="mcpToggle" ${this.mcpEnabled ? "checked" : ""} />
       <span class="toggle-slider"></span>
@@ -542,7 +542,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   <!-- PROJECT -->
   <div class="section">
     <div class="section-header">
-      <span>&#x25CB;</span> Project
+      Project
       <span class="section-actions" onclick="postMsg('refresh')" title="Refresh projects">&#x21bb;</span>
     </div>
     ${this.projects.length > 0 ? projectRadios : `<div class="placeholder">No projects found in workspace</div>`}
@@ -550,7 +550,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
 
   <!-- CONFIGURATION -->
   <div class="section">
-    <div class="section-header"><span>&#x2699;</span> Configuration</div>
+    <div class="section-header">Configuration</div>
     <div class="config-row">
       <label>Debugger</label>
       <select id="debugger">${debuggerOptions}</select>
@@ -563,7 +563,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
 
   <!-- ACTIONS -->
   <div class="section">
-    <div class="section-header"><span>&#x25B6;</span> Actions</div>
+    <div class="section-header">Actions</div>
     <div class="actions-row">
       <button class="action-btn" onclick="postMsg('build')">Build</button>
       <button class="action-btn secondary" onclick="postMsg('clean')">Clean</button>
@@ -576,13 +576,13 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
 
   <!-- MEMORY -->
   <details class="section" open>
-    <summary><span class="chevron">&#x25B6;</span> &#x2593; Memory</summary>
+    <summary><span class="chevron">&#x25B6;</span> Memory</summary>
     <div id="memoryContent">${memoryBars}</div>
   </details>
 
   <!-- CONSOLE -->
   <details class="section" open>
-    <summary><span class="chevron">&#x25B6;</span> &#x25A4; Virtual Console</summary>
+    <summary><span class="chevron">&#x25B6;</span> Virtual Console</summary>
     <div class="console-area" id="console">${consoleContent}</div>
   </details>
 
