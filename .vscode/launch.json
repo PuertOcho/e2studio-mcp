@@ -1,0 +1,79 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug headc-fw (RX651) + Virtual Console",
+            "type": "renesas-hardware",
+            "request": "launch",
+            "program": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace/headc-fw/HardwareDebug/headc-fw.x",
+            "projectRoot": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace/headc-fw",
+            "gdb": "C:/ProgramData/GCC for Renesas RX 8.3.0.202411-GNURX-ELF/rx-elf/rx-elf/bin/rx-elf-gdb.exe",
+            "pythonHome": "C:/Renesas/e2_studio/eclipse/plugins/com.renesas.python3.win32.x86_64_3.10.10.202303141009",
+            "target": {
+                "server": "C:/Users/anton/.eclipse/com.renesas.platform_1435879475/DebugComp/RX/e2-server-gdb.exe",
+                "deviceFamily": "RX",
+                "debuggerType": "E2LITE",
+                "device": "R5F5651E",
+                "serverParameters": {
+                    "-w": 0,
+                    "-uUseFine=": 0,
+                    "-uJTagClockFreq=": "6.00",
+                    "-uInputClock=": "12",
+                    "-uPTimerClock=": "120000000",
+                    "-uClockSrcHoco=": 0,
+                    "-z": "0",
+                    "-uhookWorkRamAddr=": "0x3fdd0",
+                    "-uhookWorkRamSize=": "0x230"
+                },
+                "port": "61234",
+                "serverPort": "61234",
+                "initialBreakpointAt": "PowerON_Reset_PC"
+            },
+            "gdbArguments": [
+                "-rx-force-isa=v2"
+            ],
+            "initCommands": [
+                "monitor set_internal_mem_overwrite 0-581",
+                "monitor force_rtos_off",
+                "monitor start_interface,ADM,main"
+            ]
+        },
+        {
+            "name": "Debug headc-fw (RX651) + Virtual Console (No startup break)",
+            "type": "renesas-hardware",
+            "request": "launch",
+            "program": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace/headc-fw/HardwareDebug/headc-fw.x",
+            "projectRoot": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace/headc-fw",
+            "gdb": "C:/ProgramData/GCC for Renesas RX 8.3.0.202411-GNURX-ELF/rx-elf/rx-elf/bin/rx-elf-gdb.exe",
+            "pythonHome": "C:/Renesas/e2_studio/eclipse/plugins/com.renesas.python3.win32.x86_64_3.10.10.202303141009",
+            "target": {
+                "server": "C:/Users/anton/.eclipse/com.renesas.platform_1435879475/DebugComp/RX/e2-server-gdb.exe",
+                "deviceFamily": "RX",
+                "debuggerType": "E2LITE",
+                "device": "R5F5651E",
+                "serverParameters": {
+                    "-w": 0,
+                    "-uUseFine=": 0,
+                    "-uJTagClockFreq=": "6.00",
+                    "-uInputClock=": "12",
+                    "-uPTimerClock=": "120000000",
+                    "-uClockSrcHoco=": 0,
+                    "-z": "0",
+                    "-uhookWorkRamAddr=": "0x3fdd0",
+                    "-uhookWorkRamSize=": "0x230"
+                },
+                "port": "61234",
+                "serverPort": "61234",
+                "initialBreakpointAt": ""
+            },
+            "gdbArguments": [
+                "-rx-force-isa=v2"
+            ],
+            "initCommands": [
+                "monitor set_internal_mem_overwrite 0-581",
+                "monitor force_rtos_off",
+                "monitor start_interface,ADM,main"
+            ]
+        }
+    ]
+}
