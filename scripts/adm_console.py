@@ -229,39 +229,49 @@ def auto_detect_adm_port(wait_seconds=15):
 # Main console loop
 # ---------------------------------------------------------------------------
 
-def run_console(port: int, verbose: bool = False, poll_ms: int = 500):
-    print(f"[*] Connecting to ADM SimulatedIO on localhost:{port}...")
+def run_console(port: int, verbose: bool = False, poll_ms: int = 500,
+                raw: bool = False):
+    if not raw:
+        print(f"[*] Connecting to ADM SimulatedIO on localhost:{port}...")
     client = ADMClient(port, verbose=verbose)
     try:
         client.connect()
     except (ConnectionRefusedError, socket.timeout, OSError) as e:
+        if raw:
+            sys.exit(1)
         print(f"[!] Connection failed: {e}")
         print("    Make sure debug session is running and 'monitor start_interface,ADM,main' was sent.")
         sys.exit(1)
 
-    print("[*] Connected. Probing ADM capabilities...")
+    if not raw:
+        print("[*] Connected. Probing ADM capabilities...")
 
     # Probe 1: isSimulatedIOSupported (ISimulatedIO interface)
     func, params = client.call("isSimulatedIOSupported")
-    print(f"  isSimulatedIOSupported -> func={func!r} params={params!r}")
+    if not raw:
+        print(f"  isSimulatedIOSupported -> func={func!r} params={params!r}")
     supported = (params == "true") if func else False
 
     # Probe 2: isAvailableForCoreAndSessionSimulatedIO (ISimulatedIO interface)
     func2, params2 = client.call("isAvailableForCoreAndSessionSimulatedIO", CORE_NAME)
-    print(f"  isAvailableForCoreAndSession -> func={func2!r} params={params2!r}")
+    if not raw:
+        print(f"  isAvailableForCoreAndSession -> func={func2!r} params={params2!r}")
 
     # Probe 3: Try enable directly (some servers accept enable even if isSupported returns false)
     func3, params3 = client.call("simulatedIOEnable")
-    print(f"  simulatedIOEnable -> func={func3!r} params={params3!r}")
+    if not raw:
+        print(f"  simulatedIOEnable -> func={func3!r} params={params3!r}")
 
     # Probe 4: Try polling directly to see if data comes in anyway
     func4, params4 = client.call("simulatedIOGetOutputData", CORE_NAME)
-    print(f"  simulatedIOGetOutputData -> func={func4!r} params={params4!r}")
+    if not raw:
+        print(f"  simulatedIOGetOutputData -> func={func4!r} params={params4!r}")
 
-    if not supported:
+    if not supported and not raw:
         print(f"\n[!] isSimulatedIOSupported={supported}, but trying to poll anyway...")
 
-    print(f"[*] Polling for output every {poll_ms}ms (Ctrl+C to stop)\n")
+    if not raw:
+        print(f"[*] Polling for output every {poll_ms}ms (Ctrl+C to stop)\n")
 
     poll_interval = poll_ms / 1000.0
     idle_count = 0
@@ -278,21 +288,23 @@ def run_console(port: int, verbose: bool = False, poll_ms: int = 500):
                     print(f"[binary {len(data)}B] {data.hex(' ')}")
             else:
                 idle_count += 1
-                if idle_count == 30:  # ~15s at 500ms interval
+                if idle_count == 30 and not raw:  # ~15s at 500ms interval
                     print("[*] No output yet (target may be halted)...",
                           file=sys.stderr)
                     idle_count = 0
 
             time.sleep(poll_interval)
     except KeyboardInterrupt:
-        print("\n[*] Stopping...")
+        if not raw:
+            print("\n[*] Stopping...")
     finally:
         try:
             client.disable()
         except Exception:
             pass
         client.close()
-        print("[*] Disconnected.")
+        if not raw:
+            print("[*] Disconnected.")
 
 
 if __name__ == "__main__":
@@ -322,16 +334,25 @@ if __name__ == "__main__":
         action="store_true",
         help="Show ADM protocol messages (sent/received).",
     )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Raw mode: only output target text, no diagnostics. For VS Code extension.",
+    )
     args = parser.parse_args()
 
     selected_port = args.port
     if selected_port is None:
-        print("[*] Auto-detecting ADM port from e2-server-gdb...")
+        if not args.raw:
+            print("[*] Auto-detecting ADM port from e2-server-gdb...")
         pid, selected_port = auto_detect_adm_port(wait_seconds=args.wait)
         if selected_port is None:
-            print("[!] Could not auto-detect ADM port.")
-            print("    Ensure debug session is running and 'monitor start_interface,ADM,main' was executed.")
+            if not args.raw:
+                print("[!] Could not auto-detect ADM port.")
+                print("    Ensure debug session is running and 'monitor start_interface,ADM,main' was executed.")
             sys.exit(1)
-        print(f"[*] Found e2-server-gdb PID {pid}, ADM port {selected_port}")
+        if not args.raw:
+            print(f"[*] Found e2-server-gdb PID {pid}, ADM port {selected_port}")
 
-    run_console(selected_port, verbose=args.verbose, poll_ms=args.poll)
+    run_console(selected_port, verbose=args.verbose, poll_ms=args.poll,
+                raw=args.raw)

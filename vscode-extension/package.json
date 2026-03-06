@@ -1,0 +1,98 @@
+{
+  "name": "e2studio-rx",
+  "displayName": "e2 Studio RX — Build, Flash & Debug",
+  "description": "Renesas RX development: virtual console, project selector, build/flash integration for E2 Lite / E1 / J-Link",
+  "version": "0.1.0",
+  "publisher": "PuertOcho",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/.cproject",
+    "onDebugResolve:renesas-hardware"
+  ],
+  "extensionDependencies": [
+    "renesaselectronicscorporation.renesas-debug"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "e2studio-rx.selectProject",
+        "title": "Select Project",
+        "category": "e2 Studio RX"
+      },
+      {
+        "command": "e2studio-rx.selectDebugger",
+        "title": "Select Debugger",
+        "category": "e2 Studio RX"
+      },
+      {
+        "command": "e2studio-rx.build",
+        "title": "Build Project",
+        "category": "e2 Studio RX"
+      },
+      {
+        "command": "e2studio-rx.clean",
+        "title": "Clean Project",
+        "category": "e2 Studio RX"
+      },
+      {
+        "command": "e2studio-rx.rebuild",
+        "title": "Rebuild Project",
+        "category": "e2 Studio RX"
+      },
+      {
+        "command": "e2studio-rx.flash",
+        "title": "Flash Firmware",
+        "category": "e2 Studio RX"
+      },
+      {
+        "command": "e2studio-rx.openConsole",
+        "title": "Open Virtual Console",
+        "category": "e2 Studio RX"
+      }
+    ],
+    "configuration": {
+      "title": "e2 Studio RX",
+      "properties": {
+        "e2studio-rx.configPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to e2studio-mcp.json configuration file"
+        },
+        "e2studio-rx.pythonPath": {
+          "type": "string",
+          "default": "py",
+          "description": "Python executable (py, python3, python)"
+        },
+        "e2studio-rx.consolePollMs": {
+          "type": "number",
+          "default": 500,
+          "description": "Virtual console polling interval in milliseconds"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "package": "vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.3.0"
+  }
+}
