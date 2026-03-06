@@ -469,7 +469,14 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
       <button class="action-btn" onclick="postMsg('flash')">Flash</button>
       <button class="action-btn" onclick="postMsg('debug')">&#x25B6; Debug</button>
     </div>
-      <div id="loading-bar" class="loading-bar"></div>
+    <div id="loading-bar" class="loading-bar"></div>
+  </div>
+
+  <!-- MEMORY -->
+  <div class="section">
+    <div class="section-header"><span>&#x2593;</span> Memory</div>
+    <div id="memoryContent">${memoryBars}</div>
+  </div>
 
   <!-- CONSOLE -->
   <div class="section">
