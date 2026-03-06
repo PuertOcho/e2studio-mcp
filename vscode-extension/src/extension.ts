@@ -78,6 +78,12 @@ export function activate(context: vscode.ExtensionContext): void {
             outputChannel.appendLine(
               `[e2mcp] Project: ${args.project}`
             );
+            if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+              disableMcpAndHardware(outputChannel);
+              vscode.window.showInformationMessage(
+                "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
+              );
+            }
           }
           break;
         case "selectDebugger":
@@ -93,11 +99,23 @@ export function activate(context: vscode.ExtensionContext): void {
             outputChannel.appendLine(
               `[e2mcp] Debugger: ${label}`
             );
+            if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+              disableMcpAndHardware(outputChannel);
+              vscode.window.showInformationMessage(
+                "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
+              );
+            }
           }
           break;
         case "selectBuildConfig":
           if (args?.config) {
             context.workspaceState.update("e2mcp.buildConfig", args.config);
+            if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+              disableMcpAndHardware(outputChannel);
+              vscode.window.showInformationMessage(
+                "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
+              );
+            }
           }
           break;
         case "build":
@@ -316,7 +334,11 @@ function syncMcpToggleState(): void {
   } catch { /* ignore */ }
 }
 
-/** Toggle the "disabled" flag in .vscode/mcp.json for e2studio-mcp server. */
+/**
+ * Toggle MCP server state and manage hardware connection.
+ * Disable: terminates debug session + stops ADM console + disables MCP server.
+ * Enable: enables MCP server in mcp.json (VS Code restarts it, which reconnects HW).
+ */
 function toggleMcpServer(outputChannel: vscode.OutputChannel): void {
   const mcpJson = findMcpJson();
   if (!mcpJson) {
@@ -338,13 +360,44 @@ function toggleMcpServer(outputChannel: vscode.OutputChannel): void {
       server.disabled = true;
     }
     fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
-    const newState = wasDisabled ? "enabled" : "disabled";
-    viewProvider?.setMcpEnabled(wasDisabled);
-    outputChannel.appendLine(`[e2mcp] MCP server ${newState}`);
+    const nowEnabled = wasDisabled;
+    viewProvider?.setMcpEnabled(nowEnabled);
+
+    if (nowEnabled) {
+      outputChannel.appendLine("[e2mcp] MCP server enabled");
+    } else {
+      outputChannel.appendLine("[e2mcp] MCP server disabled \u2014 disconnecting hardware...");
+      admConsole?.stop();
+      if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+        vscode.debug.stopDebugging();
+      }
+    }
+
+    const newState = nowEnabled ? "enabled" : "disabled";
     vscode.window.showInformationMessage(`MCP server ${newState}.`);
   } catch (e: any) {
     vscode.window.showErrorMessage(`Failed to toggle MCP: ${e.message}`);
   }
+}
+
+/** Force-disable MCP and disconnect hardware (used on config changes). */
+function disableMcpAndHardware(outputChannel: vscode.OutputChannel): void {
+  const mcpJson = findMcpJson();
+  if (!mcpJson) return;
+  try {
+    const text = fs.readFileSync(mcpJson, "utf-8");
+    const data = JSON.parse(text);
+    const server = data?.servers?.["e2studio-mcp"];
+    if (!server || server.disabled) return;
+    server.disabled = true;
+    fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
+    viewProvider?.setMcpEnabled(false);
+    outputChannel.appendLine("[e2mcp] MCP disabled \u2014 hardware disconnected for config change");
+    admConsole?.stop();
+    if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+      vscode.debug.stopDebugging();
+    }
+  } catch { /* ignore */ }
 }
 
 /** Locate .vscode/mcp.json in any workspace folder. */
