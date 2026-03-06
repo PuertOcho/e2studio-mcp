@@ -445,6 +445,36 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
       opacity: 1;
     }
 
+    /* Collapsible sections */
+    details.section {
+      margin-bottom: var(--section-gap);
+    }
+    details.section > summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+      margin-bottom: var(--inner-gap);
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    details.section > summary::-webkit-details-marker { display: none; }
+    details.section > summary .chevron {
+      display: inline-block;
+      transition: transform 0.15s;
+      font-size: 10px;
+    }
+    details.section[open] > summary .chevron {
+      transform: rotate(90deg);
+    }
+
     /* MCP Toggle */
     .mcp-toggle-row {
       display: flex;
@@ -545,16 +575,16 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   </div>
 
   <!-- MEMORY -->
-  <div class="section">
-    <div class="section-header"><span>&#x2593;</span> Memory</div>
+  <details class="section" open>
+    <summary><span class="chevron">&#x25B6;</span> &#x2593; Memory</summary>
     <div id="memoryContent">${memoryBars}</div>
-  </div>
+  </details>
 
   <!-- CONSOLE -->
-  <div class="section">
-    <div class="section-header"><span>&#x25A4;</span> Virtual Console</div>
+  <details class="section" open>
+    <summary><span class="chevron">&#x25B6;</span> &#x25A4; Virtual Console</summary>
     <div class="console-area" id="console">${consoleContent}</div>
-  </div>
+  </details>
 
   <script>
     const vscode = acquireVsCodeApi();
