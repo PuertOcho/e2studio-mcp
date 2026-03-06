@@ -282,9 +282,10 @@ def run_console(port: int, verbose: bool = False, poll_ms: int = 500,
                 idle_count = 0
                 try:
                     text = data.decode("ascii", errors="replace")
-                    sys.stdout.write(text)
-                    sys.stdout.flush()
-                except Exception:
+                    # Force binary stdout to avoid Windows encoding issues
+                    sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+                    sys.stdout.buffer.flush()
+                except Exception as e:
                     print(f"[binary {len(data)}B] {data.hex(' ')}")
             else:
                 idle_count += 1
