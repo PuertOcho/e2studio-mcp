@@ -1,45 +1,191 @@
 # e2studio-mcp
 
-MCP server for controlling **e2 Studio / Renesas RX** from VS Code.
+Servidor MCP e integración con VS Code para desarrollo **Renesas RX con e2 Studio**.
 
-## Features
+Este proyecto ofrece un flujo de trabajo orientado a firmware para:
 
-- **Build Management** — Compile, clean, rebuild projects headless via `make` or `e2studioc`
-- **Project Info** — Read `.cproject` config, parse `.map` files for memory analysis
-- **Flash/Debug** — Flash firmware via E2 Lite using `e2-server-gdb` + `rx-elf-gdb`
-- **Resources** — Expose build logs, memory maps, and config as MCP resources
+- compilar proyectos e2 Studio en modo headless (`make` o `e2studioc`)
+- inspeccionar configuración de proyecto y uso de memoria desde `.map`
+- grabar firmware `.mot` usando `e2-server-gdb` mediante protocolo RSP directo
+- exponer herramientas y recursos MCP para automatización asistida por IA
+- usar una extensión opcional de VS Code para build/flash/debug
 
-## Quick Start
+## Arquitectura
+
+```text
+VS Code / Cliente MCP
+        |
+        | stdio (MCP)
+        v
+e2studio_mcp.server (Python)
+  |- Build tools (make / e2studioc)
+  |- Parser de proyectos (.cproject)
+  |- Parser de mapas (.map)
+  |- Gestor de flash/debug (e2-server-gdb + RSP)
+        |
+        v
+Toolchain Renesas + hardware objetivo (E2 Lite / E1 / E2 / J-Link)
+```
+
+## Capacidades Principales
+
+- Build pipeline: `build_project`, `clean_project`, `rebuild_project`, `get_build_status`
+- Análisis de memoria: `get_build_size`, `get_map_summary`, `get_linker_sections`
+- Metadatos de proyecto: `list_projects`, `get_project_config`
+- Flash/debug: `flash_firmware`, `debug_connect`, `debug_disconnect`, `debug_status`
+- Recursos MCP:
+  - `e2studio://build/log`
+  - `e2studio://project/memory`
+  - `e2studio://project/config`
+
+## Requisitos
+
+- Windows (target principal)
+- Python `>= 3.10`
+- Instalación de Renesas e2 Studio
+- Toolchain RX (`CCRX`, `make`, `e2-server-gdb`, `rx-elf-gdb`)
+- Workspace e2 Studio con proyectos que incluyan `.cproject`
+
+## Estructura del Repositorio
+
+```text
+e2studio-mcp/
+  src/e2studio_mcp/
+    server.py          # Servidor MCP y registro de tools/resources
+    build.py           # Backends de compilación y parsing de diagnósticos
+    project.py         # Parsing de .cproject y discovery de proyectos
+    mapfile.py         # Parsing de .map y resúmenes de memoria
+    flash.py           # Sesión e2-server-gdb y grabación por RSP
+    config.py          # Carga de configuración JSON
+  tests/               # Tests unitarios + smoke test
+  scripts/             # Utilidades de soporte
+  vscode-extension/    # Extensión VS Code opcional (UI + comandos)
+  e2studio-mcp.json    # Configuración de ejecución
+```
+
+## Instalación
 
 ```powershell
-# Install dependencies
 cd e2Studio_2024_workspace/e2studio-mcp
-pip install -e .
+py -3 -m pip install -e .
+```
 
-# Run the server
+Dependencias de desarrollo (opcional):
+
+```powershell
+py -3 -m pip install -e .[dev]
+```
+
+## Configuración
+
+El servidor resuelve la configuración en este orden:
+
+1. ruta explícita (si se usa programáticamente)
+2. variable de entorno `E2STUDIO_MCP_CONFIG`
+3. archivo local `e2studio-mcp.json` en la raíz del proyecto
+
+### Ejemplo mínimo
+
+```json
+{
+  "workspace": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace",
+  "defaultProject": "headc-fw",
+  "buildConfig": "HardwareDebug",
+  "buildMode": "make",
+  "toolchain": {
+    "ccrxPath": "C:/Program Files (x86)/Renesas/RX/3_7_0/bin",
+    "e2studioPath": "C:/Renesas/e2_studio/eclipse",
+    "makePath": "C:/Renesas/e2_studio/eclipse/plugins/.../mk"
+  },
+  "flash": {
+    "debugger": "E2Lite",
+    "device": "R5F5651E",
+    "gdbPort": 61234,
+    "debugToolsPath": "C:/Users/anton/.eclipse/com.renesas.platform_xxx/DebugComp/RX"
+  }
+}
+```
+
+Notas:
+
+- `buildMode` soporta `make` o `e2studioc`.
+- Las capacidades en `devices` se usan para porcentajes ROM/RAM/DataFlash.
+- Si no se define `debugToolsPath`, se intentan rutas de autodetección conocidas.
+
+## Ejecución del Servidor MCP
+
+```powershell
+cd e2Studio_2024_workspace/e2studio-mcp
 py -3 -m e2studio_mcp.server
 ```
 
-## Configuration
+También se puede iniciar con:
 
-Edit `e2studio-mcp.json` with your local paths. The server reads its config from the
-`E2STUDIO_MCP_CONFIG` environment variable, or defaults to `e2studio-mcp.json` in the
-project directory.
+```powershell
+py -3 -m e2studio_mcp
+```
 
-## MCP Tools
+## Referencia de Herramientas MCP
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| Build | `build_project` | Compile a project |
-| Build | `clean_project` | Clean build artifacts |
-| Build | `rebuild_project` | Clean + build |
-| Build | `get_build_status` | Parse errors/warnings from last build |
-| Build | `get_build_size` | ROM/RAM usage from .map |
-| Project | `list_projects` | Find all e2 Studio projects in workspace |
-| Project | `get_project_config` | Read .cproject XML configuration |
-| Project | `get_map_summary` | Parse .map file sections |
-| Project | `get_linker_sections` | Detailed linker section occupancy |
-| Flash | `flash_firmware` | Flash .mot via E2 Lite |
-| Flash | `debug_connect` | Start GDB server |
-| Flash | `debug_disconnect` | Stop GDB server |
-| Flash | `debug_status` | Check E2 Lite connection |
+| Grupo | Tool | Descripción |
+|---|---|---|
+| Build | `build_project(project?, config?, mode?)` | Compila usando `make` o `e2studioc` |
+| Build | `clean_project(project?, config?, mode?)` | Limpia artefactos de compilación |
+| Build | `rebuild_project(project?, config?, mode?)` | Ejecuta clean + build |
+| Build | `get_build_status(project?)` | Errores y warnings de la última compilación |
+| Build | `get_build_size(project?, config?)` | Uso ROM/RAM/DataFlash desde `.map` |
+| Project | `list_projects()` | Descubre proyectos dentro del workspace |
+| Project | `get_project_config(project?, config?)` | Parsea detalles de `.cproject` |
+| Map | `get_map_summary(project?, config?)` | Resumen de secciones + porcentajes |
+| Map | `get_linker_sections(project?, config?)` | Detalle individual de secciones de linker |
+| Flash | `flash_firmware(project?, file?, erase_data_flash?)` | Graba `.mot` por RSP |
+| Flash | `debug_connect(project?, launch_file?)` | Inicia sesión `e2-server-gdb` |
+| Flash | `debug_disconnect()` | Cierra sesión de depuración |
+| Flash | `debug_status()` | Estado actual de la sesión |
+
+## Extensión VS Code (Opcional)
+
+La carpeta `vscode-extension/` incluye un panel lateral y comandos para selección de proyecto, build, flash y debug.
+
+### Compilar la extensión
+
+```powershell
+cd e2Studio_2024_workspace/e2studio-mcp/vscode-extension
+npm install
+npm run compile
+```
+
+### Ajustes de la extensión
+
+- `e2mcp.configPath`: ruta a `e2studio-mcp.json`
+- `e2mcp.pythonPath`: ejecutable de Python (`py`, `python3`, `python`)
+- `e2mcp.consolePollMs`: intervalo de sondeo de consola virtual
+
+## Testing
+
+Ejecutar tests unitarios:
+
+```powershell
+cd e2Studio_2024_workspace/e2studio-mcp
+py -3 -m pytest -q
+```
+
+Ejecutar smoke test (parsing real del workspace):
+
+```powershell
+cd e2Studio_2024_workspace/e2studio-mcp
+py -3 tests/smoke_test.py
+```
+
+## Troubleshooting
+
+- `Config file not found`: definir `E2STUDIO_MCP_CONFIG` o crear `e2studio-mcp.json` en la raíz.
+- `make not found`: revisar `toolchain.makePath`.
+- `e2studioc not found`: comprobar `toolchain.e2studioPath` apuntando a `.../eclipse`.
+- `Cannot find e2-server-gdb`: definir `flash.debugToolsPath` explícitamente.
+- `No .mot file found`: compilar antes de grabar.
+- `Cannot connect to e2-server-gdb`: verificar sonda, dispositivo configurado y puerto GDB.
+
+## Licencia
+
+MIT (la metadata del paquete de extensión está en `vscode-extension/package.json`).
