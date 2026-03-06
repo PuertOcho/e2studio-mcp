@@ -382,8 +382,8 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
       min-height: 80px;
       max-height: 200px;
       overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
+      overflow-x: auto;
+      white-space: pre;
       border: 1px solid var(--vscode-widget-border, transparent);
     }
     .console-area:empty::before {
