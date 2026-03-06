@@ -42,11 +42,11 @@ export class ADMConsole implements vscode.Disposable {
       "[console] Debug session detected — waiting for ADM port..."
     );
 
-    // Give e2-server-gdb 3s to open the ADM port before spawning the script
+    // Give e2-server-gdb 5s to open the ADM port before spawning the script
     setTimeout(() => {
       this.starting = false;
       this.spawnConsole();
-    }, 3000);
+    }, 5000);
   }
 
   /** Manually start the console (from command palette). */

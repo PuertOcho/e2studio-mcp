@@ -230,17 +230,29 @@ def auto_detect_adm_port(wait_seconds=15):
 # ---------------------------------------------------------------------------
 
 def run_console(port: int, verbose: bool = False, poll_ms: int = 500,
-                raw: bool = False):
+                raw: bool = False, connect_retries: int = 10):
     if not raw:
         print(f"[*] Connecting to ADM SimulatedIO on localhost:{port}...")
     client = ADMClient(port, verbose=verbose)
-    try:
-        client.connect()
-    except (ConnectionRefusedError, socket.timeout, OSError) as e:
-        if raw:
-            sys.exit(1)
-        print(f"[!] Connection failed: {e}")
-        print("    Make sure debug session is running and 'monitor start_interface,ADM,main' was sent.")
+
+    # In raw mode, retry connection since the debug session may still be starting
+    last_err = None
+    attempts = connect_retries if raw else 1
+    for attempt in range(attempts):
+        try:
+            client.connect()
+            last_err = None
+            break
+        except (ConnectionRefusedError, socket.timeout, OSError) as e:
+            last_err = e
+            if not raw:
+                print(f"[!] Connection failed: {e}")
+                print("    Make sure debug session is running and 'monitor start_interface,ADM,main' was sent.")
+                sys.exit(1)
+            time.sleep(2)
+
+    if last_err is not None:
+        print(f"Connection failed after {attempts} attempts: {last_err}", file=sys.stderr)
         sys.exit(1)
 
     if not raw:
