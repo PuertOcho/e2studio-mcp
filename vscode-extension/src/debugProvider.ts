@@ -148,11 +148,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
 
   /** Find the rx-elf-gdb executable. */
   private findGdbExecutable(baseName: string): string {
-    // 1. Check in debugToolsPath
-    const inTools = path.join(this.config.flash.debugToolsPath, `${baseName}.exe`);
-    if (fs.existsSync(inTools)) return inTools;
-
-    // 2. Search common GCC for Renesas RX install locations
+    // 1. Search GCC for Renesas RX install in ProgramData (the real GDB)
     const programData = process.env.ProgramData || "C:/ProgramData";
     try {
       const entries = fs.readdirSync(programData).filter(
@@ -168,7 +164,8 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       // ProgramData not readable, fall through
     }
 
-    // 3. Fallback to bare name (hope it's on PATH)
+    // 2. Fallback to bare name (hope it's on PATH)
+    // Note: DebugComp/RX also has rx-elf-gdb.exe but it's a stub that fails --version
     return baseName;
   }
 }

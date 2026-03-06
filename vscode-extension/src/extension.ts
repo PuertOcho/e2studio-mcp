@@ -113,10 +113,12 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         case "debug": {
           if (debugProvider && config) {
+            viewProvider?.setBusy(true);
             const project = viewProvider?.currentProject || config.defaultProject;
             const fullConfig = debugProvider.buildConfig(project, true);
             const folder = vscode.workspace.workspaceFolders?.[0];
-            vscode.debug.startDebugging(folder, fullConfig);
+            vscode.debug.startDebugging(folder, fullConfig, { suppressDebugView: true });
+            // setBusy(false) is handled by onDidStartDebugSession / onDidTerminateDebugSession
           }
           break;
         }
@@ -213,10 +215,15 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.window.showWarningMessage("No project selected.");
       return;
     }
-    const result = await buildRunner.build(project, buildConfig, mode);
-    if (result.success && mode !== "clean") {
-      viewProvider.refreshMemory();
-      viewProvider.updateWebview();
+    viewProvider.setBusy(true);
+    try {
+      const result = await buildRunner.build(project, buildConfig, mode);
+      if (result.success && mode !== "clean") {
+        viewProvider.refreshMemory();
+        viewProvider.updateWebview();
+      }
+    } finally {
+      viewProvider.setBusy(false);
     }
   };
 
@@ -240,7 +247,12 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showWarningMessage("No project selected.");
         return;
       }
-      await flashRunner.flash(project, buildConfig);
+      viewProvider.setBusy(true);
+      try {
+        await flashRunner.flash(project, buildConfig);
+      } finally {
+        viewProvider.setBusy(false);
+      }
     })
   );
 
@@ -251,6 +263,7 @@ export function activate(context: vscode.ExtensionContext): void {
         outputChannel.appendLine(
           `[e2studio-rx] Debug session started: ${session.name}`
         );
+        viewProvider?.setBusy(false);
         admConsole?.startOnDebug();
       }
     })
@@ -262,6 +275,7 @@ export function activate(context: vscode.ExtensionContext): void {
         outputChannel.appendLine(
           `[e2studio-rx] Debug session ended: ${session.name}`
         );
+        viewProvider?.setBusy(false);
         admConsole?.stop();
       }
     })

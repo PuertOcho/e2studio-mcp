@@ -17,6 +17,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   private selectedBuildConfig = "HardwareDebug";
   private memory?: MemoryInfo;
   private consoleBuffer: string[] = [];
+  private busy = false;
   private static readonly MAX_CONSOLE_LINES = 500;
 
   constructor(
@@ -44,6 +45,12 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
     if (project && this.projects.find(p => p.name === project)) this.selectedProject = project;
     if (debugger_) this.selectedDebugger = debugger_;
     if (buildConfig) this.selectedBuildConfig = buildConfig;
+  }
+
+  /** Set busy state — disables action buttons in the webview. */
+  setBusy(busy: boolean): void {
+    this.busy = busy;
+    this.view?.webview.postMessage({ command: "setBusy", busy });
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -430,11 +437,11 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   <div class="section">
     <div class="section-header"><span>&#x25B6;</span> Actions</div>
     <div class="actions-row">
-      <button onclick="postMsg('build')">Build</button>
-      <button class="secondary" onclick="postMsg('clean')">Clean</button>
-      <button class="secondary" onclick="postMsg('rebuild')">Rebuild</button>
-      <button onclick="postMsg('flash')">Flash</button>
-      <button onclick="postMsg('debug')">&#x25B6; Debug</button>
+      <button class="action-btn" onclick="postMsg('build')">Build</button>
+      <button class="action-btn secondary" onclick="postMsg('clean')">Clean</button>
+      <button class="action-btn secondary" onclick="postMsg('rebuild')">Rebuild</button>
+      <button class="action-btn" onclick="postMsg('flash')">Flash</button>
+      <button class="action-btn" onclick="postMsg('debug')">&#x25B6; Debug</button>
     </div>
   </div>
 
@@ -488,6 +495,15 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
         case 'setMemory':
           // Full re-render handled by extension updating HTML
           break;
+        case 'setBusy': {
+          const btns = document.querySelectorAll('.action-btn');
+          btns.forEach(btn => {
+            btn.disabled = msg.busy;
+            btn.style.opacity = msg.busy ? '0.5' : '1';
+            btn.style.pointerEvents = msg.busy ? 'none' : 'auto';
+          });
+          break;
+        }
       }
     });
 
