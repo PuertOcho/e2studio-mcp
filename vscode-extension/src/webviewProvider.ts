@@ -329,6 +329,32 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-button-secondaryHoverBackground);
     }
 
+    /* Loading Bar */
+    .loading-bar {
+      height: 2px;
+      width: 100%;
+      background: var(--vscode-dropdown-background, transparent);
+      margin-top: 8px;
+      border-radius: 1px;
+      overflow: hidden;
+      position: relative;
+      display: none;
+    }
+    .loading-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 30%;
+      background: var(--vscode-progressBar-background, var(--vscode-button-background));
+      animation: indeterminate 1.5s infinite ease-in-out;
+    }
+    @keyframes indeterminate {
+      0% { left: -30%; }
+      100% { left: 100%; }
+    }
+
     /* Memory bars */
     .mem-row {
       display: flex;
@@ -443,13 +469,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
       <button class="action-btn" onclick="postMsg('flash')">Flash</button>
       <button class="action-btn" onclick="postMsg('debug')">&#x25B6; Debug</button>
     </div>
-  </div>
-
-  <!-- MEMORY -->
-  <div class="section">
-    <div class="section-header"><span>&#x2593;</span> Memory</div>
-    <div id="memoryContent">${memoryBars}</div>
-  </div>
+      <div id="loading-bar" class="loading-bar"></div>
 
   <!-- CONSOLE -->
   <div class="section">
@@ -502,6 +522,8 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
             btn.style.opacity = msg.busy ? '0.5' : '1';
             btn.style.pointerEvents = msg.busy ? 'none' : 'auto';
           });
+          const loading = document.getElementById('loading-bar');
+          if (loading) loading.style.display = msg.busy ? 'block' : 'none';
           break;
         }
       }

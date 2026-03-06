@@ -142,6 +142,7 @@ function parseMappingList(text: string): MapSection[] {
   const sections: MapSection[] = [];
   const lines = text.split("\n");
   let inMapping = false;
+  let currentSectionName: string | undefined;
 
   for (const line of lines) {
     if (line.includes("*** Mapping List ***")) {
@@ -149,19 +150,36 @@ function parseMappingList(text: string): MapSection[] {
       continue;
     }
     if (!inMapping) continue;
-    if (line.includes("***") && !line.includes("Mapping")) break;
+    if (line.startsWith("***") && !line.includes("Mapping")) break;
 
-    // Match: SECTION_NAME  START_HEX  END_HEX  SIZE_HEX  ALIGN
-    // or:    SECTION_NAME  START_HEX  END_HEX  SIZE_HEX
-    const m = line.match(
-      /^(\S+)\s+([0-9A-Fa-f]{4,8})\s+([0-9A-Fa-f]{4,8})\s+([0-9A-Fa-f]+)/
+    // Skip headers
+    if (line.includes("SECTION") && line.includes("START")) continue;
+    if (line.includes("ATTRIBUTE")) continue;
+
+    const stripped = line.trim();
+    if (!stripped) continue;
+
+    const dataMatch = line.match(
+      /^\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+(\d+)\s*(?:\S+)?\s*$/
     );
-    if (m) {
+
+    if (dataMatch && currentSectionName) {
       sections.push({
-        name: m[1],
-        start: parseInt(m[2], 16),
-        size: parseInt(m[4], 16),
+        name: currentSectionName,
+        start: parseInt(dataMatch[1], 16),
+        size: parseInt(dataMatch[3], 16),
       });
+      currentSectionName = undefined;
+      continue;
+    }
+
+    const headerMatch = stripped.match(/^(\S+)$/);
+    if (headerMatch && !line.startsWith(" ")) {
+      // Sometimes it has spaces before, let's just assume if it's strictly just one word with some leading spaces
+    }
+    // Let's use a better header match: if it's not a data match and has text, it's the section name
+    if (!dataMatch) {
+      currentSectionName = stripped;
     }
   }
 
