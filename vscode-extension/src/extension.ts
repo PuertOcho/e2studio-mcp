@@ -113,6 +113,19 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         case "debug": {
           if (debugProvider && config) {
+            // Prevent attempting to start a new session while one is active
+            if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+              vscode.window.showInformationMessage(
+                "A debug session is already active.",
+                "Restart Session", "Cancel"
+              ).then((resp) => {
+                if (resp === "Restart Session") {
+                  vscode.commands.executeCommand("workbench.action.debug.restart");
+                }
+              });
+              break;
+            }
+
             viewProvider?.setBusy(true);
             const project = viewProvider?.currentProject || config.defaultProject;
             const fullConfig = debugProvider.buildConfig(project, true);
