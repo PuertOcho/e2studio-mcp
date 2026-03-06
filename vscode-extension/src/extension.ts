@@ -87,9 +87,11 @@ export function activate(context: vscode.ExtensionContext): void {
         case "flash":
           vscode.commands.executeCommand("e2studio-rx.flash");
           break;
-        case "debug":
-          vscode.debug.startDebugging(undefined, "headc-fw RX651 (E2 Lite)");
+        case "debug": {
+          const folder = vscode.workspace.workspaceFolders?.[0];
+          vscode.debug.startDebugging(folder, "Debug headc-fw (RX651) + Virtual Console");
           break;
+        }
         case "openConsole":
           admConsole?.startManual();
           break;
