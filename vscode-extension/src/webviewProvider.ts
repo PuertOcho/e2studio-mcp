@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
 import {
   ProjectInfo,
   MemoryInfo,
@@ -87,6 +89,9 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
         case "openConsole":
           this.onCommand(msg.command);
           break;
+        case "toggleMcp":
+          this.toggleMcp(msg.value);
+          break;
         case "refresh":
           this.refreshProjects();
           this.refreshMemory();
@@ -156,6 +161,41 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   updateWebview(): void {
     if (!this.view) return;
     this.view.webview.html = this.getHtml();
+  }
+
+  private getMcpPaths() {
+    const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!wsPath) return null;
+    return {
+      enabled: path.join(wsPath, ".vscode", "mcp.json"),
+      disabled: path.join(wsPath, ".vscode", "mcp.json.disabled")
+    };
+  }
+
+  private isMcpEnabled(): boolean {
+    const paths = this.getMcpPaths();
+    if (!paths) return false;
+    return fs.existsSync(paths.enabled);
+  }
+
+  private toggleMcp(enable: boolean) {
+    const paths = this.getMcpPaths();
+    if (!paths) return;
+    try {
+      if (enable) {
+        if (fs.existsSync(paths.disabled)) {
+          fs.renameSync(paths.disabled, paths.enabled);
+        }
+      } else {
+        if (fs.existsSync(paths.enabled)) {
+          fs.renameSync(paths.enabled, paths.disabled);
+        }
+      }
+      // Re-render to update toggle UI state
+      this.updateWebview();
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`Failed to toggle MCP: ${e.message}`);
+    }
   }
 
   private getHtml(): string {
@@ -441,7 +481,10 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   <div class="section">
     <div class="section-header">
       <span>&#x25CB;</span> Project
-      <span class="section-actions" onclick="postMsg('refresh')" title="Refresh projects">&#x21bb;</span>
+      <label class="section-actions" title="Enable/Disable AI MCP Server" style="display:flex; align-items:center; gap:4px; opacity:1;">
+        <span style="font-size:10px; opacity:0.8;">MCP</span>
+        <input type="checkbox" ${this.isMcpEnabled() ? "checked" : ""} onchange="postMsg('toggleMcp', this.checked)" />
+      </label>
     </div>
     ${this.projects.length > 0 ? projectRadios : `<div class="placeholder">No projects found in workspace</div>`}
   </div>
