@@ -4,11 +4,15 @@ import { ADMConsole } from "./admConsole";
 import { StatusBar } from "./statusBar";
 import { loadConfig, ExtensionConfig } from "./config";
 import { E2StudioRxViewProvider } from "./webviewProvider";
+import { BuildRunner } from "./buildRunner";
+import { FlashRunner } from "./flashRunner";
 
 let admConsole: ADMConsole | undefined;
 let statusBar: StatusBar | undefined;
 let config: ExtensionConfig | undefined;
 let viewProvider: E2StudioRxViewProvider | undefined;
+let buildRunner: BuildRunner | undefined;
+let flashRunner: FlashRunner | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("e2 Studio RX");
@@ -47,6 +51,12 @@ export function activate(context: vscode.ExtensionContext): void {
   admConsole = new ADMConsole(context);
   context.subscriptions.push(admConsole);
 
+  // Build & Flash runners
+  buildRunner = new BuildRunner(config);
+  context.subscriptions.push(buildRunner);
+  flashRunner = new FlashRunner(config);
+  context.subscriptions.push(flashRunner);
+
   // Webview sidebar panel
   viewProvider = new E2StudioRxViewProvider(
     context.extensionUri,
@@ -56,6 +66,7 @@ export function activate(context: vscode.ExtensionContext): void {
         case "selectProject":
           if (args?.project) {
             statusBar?.setProject(args.project);
+            context.workspaceState.update("e2studio-rx.project", args.project);
             outputChannel.appendLine(
               `[e2studio-rx] Project: ${args.project}`
             );
@@ -70,9 +81,15 @@ export function activate(context: vscode.ExtensionContext): void {
                   ? "J-Link"
                   : args.debugger;
             statusBar?.setDebugger(label);
+            context.workspaceState.update("e2studio-rx.debugger", args.debugger);
             outputChannel.appendLine(
               `[e2studio-rx] Debugger: ${label}`
             );
+          }
+          break;
+        case "selectBuildConfig":
+          if (args?.config) {
+            context.workspaceState.update("e2studio-rx.buildConfig", args.config);
           }
           break;
         case "build":
@@ -106,6 +123,17 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
+  // Restore persisted selections
+  const savedProject = context.workspaceState.get<string>("e2studio-rx.project");
+  const savedDebugger = context.workspaceState.get<string>("e2studio-rx.debugger");
+  const savedBuildConfig = context.workspaceState.get<string>("e2studio-rx.buildConfig");
+  viewProvider.restoreState(savedProject, savedDebugger, savedBuildConfig);
+  if (savedProject) statusBar?.setProject(savedProject);
+  if (savedDebugger) {
+    const label = savedDebugger === "E2LITE" ? "E2 Lite" : savedDebugger === "JLINK" ? "J-Link" : savedDebugger;
+    statusBar?.setDebugger(label);
+  }
+
   // Pipe console output to webview
   admConsole.onOutput((text) => {
     viewProvider?.appendConsole(text);
@@ -121,13 +149,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("e2studio-rx.selectProject", async () => {
       const projects = viewProvider
-        ? (viewProvider as any).projects.map((p: any) => p.name)
+        ? viewProvider.projects.map((p) => p.name)
         : ["headc-fw", "headc_v2_fw", "headc-v2-bloader"];
       const pick = await vscode.window.showQuickPick(projects, {
         placeHolder: "Select e2 Studio project",
       });
       if (pick) {
         statusBar?.setProject(pick);
+        context.workspaceState.update("e2studio-rx.project", pick);
         outputChannel.appendLine(`[e2studio-rx] Project: ${pick}`);
       }
     })
@@ -149,12 +178,53 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (pick) {
           statusBar?.setDebugger(pick.label);
+          context.workspaceState.update("e2studio-rx.debugger", pick.value);
           outputChannel.appendLine(
             `[e2studio-rx] Debugger: ${pick.label} (${pick.value})`
           );
         }
       }
     )
+  );
+
+  // Build commands
+  const runBuild = async (mode: "build" | "clean" | "rebuild") => {
+    if (!viewProvider || !buildRunner) return;
+    const project = viewProvider.currentProject;
+    const buildConfig = viewProvider.currentBuildConfig;
+    if (!project) {
+      vscode.window.showWarningMessage("No project selected.");
+      return;
+    }
+    const result = await buildRunner.build(project, buildConfig, mode);
+    if (result.success && mode !== "clean") {
+      viewProvider.refreshMemory();
+      viewProvider.updateWebview();
+    }
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2studio-rx.build", () => runBuild("build"))
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2studio-rx.clean", () => runBuild("clean"))
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2studio-rx.rebuild", () => runBuild("rebuild"))
+  );
+
+  // Flash command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2studio-rx.flash", async () => {
+      if (!viewProvider || !flashRunner) return;
+      const project = viewProvider.currentProject;
+      const buildConfig = viewProvider.currentBuildConfig;
+      if (!project) {
+        vscode.window.showWarningMessage("No project selected.");
+        return;
+      }
+      await flashRunner.flash(project, buildConfig);
+    })
   );
 
   // Auto-start console on Renesas debug session

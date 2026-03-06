@@ -11,7 +11,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "e2studio-rx.panel";
 
   private view?: vscode.WebviewView;
-  private projects: ProjectInfo[] = [];
+  public projects: ProjectInfo[] = [];
   private selectedProject = "";
   private selectedDebugger = "E2LITE";
   private selectedBuildConfig = "HardwareDebug";
@@ -32,6 +32,18 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
     this.selectedDebugger =
       config.flash.debugger === "E2Lite" ? "E2LITE" : config.flash.debugger;
     this.refreshProjects();
+  }
+
+  /** Public getters for extension.ts to read current selections. */
+  get currentProject(): string { return this.selectedProject; }
+  get currentBuildConfig(): string { return this.selectedBuildConfig; }
+  get currentDebugger(): string { return this.selectedDebugger; }
+
+  /** Restore selections from persisted state. */
+  restoreState(project?: string, debugger_?: string, buildConfig?: string): void {
+    if (project && this.projects.find(p => p.name === project)) this.selectedProject = project;
+    if (debugger_) this.selectedDebugger = debugger_;
+    if (buildConfig) this.selectedBuildConfig = buildConfig;
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
