@@ -1,6 +1,6 @@
 {
-  "name": "e2studio-rx",
-  "displayName": "e2 Studio RX — Build, Flash & Debug",
+  "name": "e2mcp",
+  "displayName": "E2 MCP — Build, Flash & Debug",
   "description": "Renesas RX development: virtual console, project selector, build/flash integration for E2 Lite / E1 / J-Link",
   "version": "0.1.0",
   "publisher": "PuertOcho",
@@ -15,7 +15,7 @@
   "activationEvents": [
     "workspaceContains:**/.cproject",
     "onDebugResolve:renesas-hardware",
-    "onView:e2studio-rx.panel"
+    "onView:e2mcp.panel"
   ],
   "extensionDependencies": [
     "renesaselectronicscorporation.renesas-debug"
@@ -25,72 +25,72 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "e2studio-rx",
-          "title": "e2 Studio RX",
+          "id": "e2mcp",
+          "title": "E2 MCP",
           "icon": "resources/icon.svg"
         }
       ]
     },
     "views": {
-      "e2studio-rx": [
+      "e2mcp": [
         {
           "type": "webview",
-          "id": "e2studio-rx.panel",
-          "name": "e2 Studio RX"
+          "id": "e2mcp.panel",
+          "name": "E2 MCP"
         }
       ]
     },
     "commands": [
       {
-        "command": "e2studio-rx.selectProject",
+        "command": "e2mcp.selectProject",
         "title": "Select Project",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       },
       {
-        "command": "e2studio-rx.selectDebugger",
+        "command": "e2mcp.selectDebugger",
         "title": "Select Debugger",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       },
       {
-        "command": "e2studio-rx.build",
+        "command": "e2mcp.build",
         "title": "Build Project",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       },
       {
-        "command": "e2studio-rx.clean",
+        "command": "e2mcp.clean",
         "title": "Clean Project",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       },
       {
-        "command": "e2studio-rx.rebuild",
+        "command": "e2mcp.rebuild",
         "title": "Rebuild Project",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       },
       {
-        "command": "e2studio-rx.flash",
+        "command": "e2mcp.flash",
         "title": "Flash Firmware",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       },
       {
-        "command": "e2studio-rx.openConsole",
+        "command": "e2mcp.openConsole",
         "title": "Open Virtual Console",
-        "category": "e2 Studio RX"
+        "category": "E2 MCP"
       }
     ],
     "configuration": {
-      "title": "e2 Studio RX",
+      "title": "E2 MCP",
       "properties": {
-        "e2studio-rx.configPath": {
+        "e2mcp.configPath": {
           "type": "string",
           "default": "",
           "description": "Path to e2studio-mcp.json configuration file"
         },
-        "e2studio-rx.pythonPath": {
+        "e2mcp.pythonPath": {
           "type": "string",
           "default": "py",
           "description": "Python executable (py, python3, python)"
         },
-        "e2studio-rx.consolePollMs": {
+        "e2mcp.consolePollMs": {
           "type": "number",
           "default": 500,
           "description": "Virtual console polling interval in milliseconds"

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { ADMConsole } from "./admConsole";
 import { StatusBar } from "./statusBar";
 import { loadConfig, ExtensionConfig } from "./config";
-import { E2StudioRxViewProvider } from "./webviewProvider";
+import { E2McpViewProvider } from "./webviewProvider";
 import { BuildRunner } from "./buildRunner";
 import { FlashRunner } from "./flashRunner";
 import { DebugProvider } from "./debugProvider";
@@ -12,24 +12,24 @@ import { DebugProvider } from "./debugProvider";
 let admConsole: ADMConsole | undefined;
 let statusBar: StatusBar | undefined;
 let config: ExtensionConfig | undefined;
-let viewProvider: E2StudioRxViewProvider | undefined;
+let viewProvider: E2McpViewProvider | undefined;
 let buildRunner: BuildRunner | undefined;
 let flashRunner: FlashRunner | undefined;
 let debugProvider: DebugProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const outputChannel = vscode.window.createOutputChannel("e2 Studio RX");
-  outputChannel.appendLine("[e2studio-rx] Activating...");
+  const outputChannel = vscode.window.createOutputChannel("E2 MCP");
+  outputChannel.appendLine("[e2mcp] Activating...");
 
   // Load config
   try {
     config = loadConfig();
     outputChannel.appendLine(
-      `[e2studio-rx] Config loaded: workspace=${config.workspace}, project=${config.defaultProject}`
+      `[e2mcp] Config loaded: workspace=${config.workspace}, project=${config.defaultProject}`
     );
   } catch (e: any) {
     outputChannel.appendLine(
-      `[e2studio-rx] Warning: config not found (${e.message}). Using defaults.`
+      `[e2mcp] Warning: config not found (${e.message}). Using defaults.`
     );
     config = {
       workspace: "",
@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(flashRunner);
 
   // Webview sidebar panel
-  viewProvider = new E2StudioRxViewProvider(
+  viewProvider = new E2McpViewProvider(
     context.extensionUri,
     config,
     (cmd, args) => {
@@ -74,9 +74,9 @@ export function activate(context: vscode.ExtensionContext): void {
         case "selectProject":
           if (args?.project) {
             statusBar?.setProject(args.project);
-            context.workspaceState.update("e2studio-rx.project", args.project);
+            context.workspaceState.update("e2mcp.project", args.project);
             outputChannel.appendLine(
-              `[e2studio-rx] Project: ${args.project}`
+              `[e2mcp] Project: ${args.project}`
             );
           }
           break;
@@ -89,28 +89,28 @@ export function activate(context: vscode.ExtensionContext): void {
                   ? "J-Link"
                   : args.debugger;
             statusBar?.setDebugger(label);
-            context.workspaceState.update("e2studio-rx.debugger", args.debugger);
+            context.workspaceState.update("e2mcp.debugger", args.debugger);
             outputChannel.appendLine(
-              `[e2studio-rx] Debugger: ${label}`
+              `[e2mcp] Debugger: ${label}`
             );
           }
           break;
         case "selectBuildConfig":
           if (args?.config) {
-            context.workspaceState.update("e2studio-rx.buildConfig", args.config);
+            context.workspaceState.update("e2mcp.buildConfig", args.config);
           }
           break;
         case "build":
-          vscode.commands.executeCommand("e2studio-rx.build");
+          vscode.commands.executeCommand("e2mcp.build");
           break;
         case "clean":
-          vscode.commands.executeCommand("e2studio-rx.clean");
+          vscode.commands.executeCommand("e2mcp.clean");
           break;
         case "rebuild":
-          vscode.commands.executeCommand("e2studio-rx.rebuild");
+          vscode.commands.executeCommand("e2mcp.rebuild");
           break;
         case "flash":
-          vscode.commands.executeCommand("e2studio-rx.flash");
+          vscode.commands.executeCommand("e2mcp.flash");
           break;
         case "debug": {
           if (debugProvider && config) {
@@ -148,7 +148,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      E2StudioRxViewProvider.viewType,
+      E2McpViewProvider.viewType,
       viewProvider
     )
   );
@@ -160,9 +160,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // Restore persisted selections
-  const savedProject = context.workspaceState.get<string>("e2studio-rx.project");
-  const savedDebugger = context.workspaceState.get<string>("e2studio-rx.debugger");
-  const savedBuildConfig = context.workspaceState.get<string>("e2studio-rx.buildConfig");
+  const savedProject = context.workspaceState.get<string>("e2mcp.project");
+  const savedDebugger = context.workspaceState.get<string>("e2mcp.debugger");
+  const savedBuildConfig = context.workspaceState.get<string>("e2mcp.buildConfig");
   viewProvider.restoreState(savedProject, savedDebugger, savedBuildConfig);
   if (savedProject) statusBar?.setProject(savedProject);
   if (savedDebugger) {
@@ -177,13 +177,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Commands
   context.subscriptions.push(
-    vscode.commands.registerCommand("e2studio-rx.openConsole", () => {
+    vscode.commands.registerCommand("e2mcp.openConsole", () => {
       admConsole?.startManual();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("e2studio-rx.selectProject", async () => {
+    vscode.commands.registerCommand("e2mcp.selectProject", async () => {
       const projects = viewProvider
         ? viewProvider.projects.map((p) => p.name)
         : ["headc-fw", "headc_v2_fw", "headc-v2-bloader"];
@@ -192,15 +192,15 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       if (pick) {
         statusBar?.setProject(pick);
-        context.workspaceState.update("e2studio-rx.project", pick);
-        outputChannel.appendLine(`[e2studio-rx] Project: ${pick}`);
+        context.workspaceState.update("e2mcp.project", pick);
+        outputChannel.appendLine(`[e2mcp] Project: ${pick}`);
       }
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "e2studio-rx.selectDebugger",
+      "e2mcp.selectDebugger",
       async () => {
         const debuggers = [
           { label: "E2 Lite", value: "E2LITE" },
@@ -214,9 +214,9 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (pick) {
           statusBar?.setDebugger(pick.label);
-          context.workspaceState.update("e2studio-rx.debugger", pick.value);
+          context.workspaceState.update("e2mcp.debugger", pick.value);
           outputChannel.appendLine(
-            `[e2studio-rx] Debugger: ${pick.label} (${pick.value})`
+            `[e2mcp] Debugger: ${pick.label} (${pick.value})`
           );
         }
       }
@@ -245,18 +245,18 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("e2studio-rx.build", () => runBuild("build"))
+    vscode.commands.registerCommand("e2mcp.build", () => runBuild("build"))
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand("e2studio-rx.clean", () => runBuild("clean"))
+    vscode.commands.registerCommand("e2mcp.clean", () => runBuild("clean"))
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand("e2studio-rx.rebuild", () => runBuild("rebuild"))
+    vscode.commands.registerCommand("e2mcp.rebuild", () => runBuild("rebuild"))
   );
 
   // Flash command
   context.subscriptions.push(
-    vscode.commands.registerCommand("e2studio-rx.flash", async () => {
+    vscode.commands.registerCommand("e2mcp.flash", async () => {
       if (!viewProvider || !flashRunner) return;
       const project = viewProvider.currentProject;
       const buildConfig = viewProvider.currentBuildConfig;
@@ -278,7 +278,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.onDidStartDebugSession((session) => {
       if (session.type === "renesas-hardware") {
         outputChannel.appendLine(
-          `[e2studio-rx] Debug session started: ${session.name}`
+          `[e2mcp] Debug session started: ${session.name}`
         );
         viewProvider?.setBusy(false);
         admConsole?.startOnDebug();
@@ -290,7 +290,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.onDidTerminateDebugSession((session) => {
       if (session.type === "renesas-hardware") {
         outputChannel.appendLine(
-          `[e2studio-rx] Debug session ended: ${session.name}`
+          `[e2mcp] Debug session ended: ${session.name}`
         );
         viewProvider?.setBusy(false);
         admConsole?.stop();
@@ -301,7 +301,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Sync initial MCP toggle state
   syncMcpToggleState();
 
-  outputChannel.appendLine("[e2studio-rx] Activated successfully.");
+  outputChannel.appendLine("[e2mcp] Activated successfully.");
 }
 
 /** Read mcp.json and sync toggle state to webview. */
@@ -340,7 +340,7 @@ function toggleMcpServer(outputChannel: vscode.OutputChannel): void {
     fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
     const newState = wasDisabled ? "enabled" : "disabled";
     viewProvider?.setMcpEnabled(wasDisabled);
-    outputChannel.appendLine(`[e2studio-rx] MCP server ${newState}`);
+    outputChannel.appendLine(`[e2mcp] MCP server ${newState}`);
     vscode.window.showInformationMessage(`MCP server ${newState}.`);
   } catch (e: any) {
     vscode.window.showErrorMessage(`Failed to toggle MCP: ${e.message}`);

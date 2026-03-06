@@ -14,7 +14,7 @@ export class StatusBar implements vscode.Disposable {
       vscode.StatusBarAlignment.Left,
       100
     );
-    this.projectItem.command = "e2studio-rx.selectProject";
+    this.projectItem.command = "e2mcp.selectProject";
     this.projectItem.tooltip = "Select e2 Studio project";
     this.setProject(config.defaultProject);
     this.projectItem.show();
@@ -24,7 +24,7 @@ export class StatusBar implements vscode.Disposable {
       vscode.StatusBarAlignment.Left,
       99
     );
-    this.debuggerItem.command = "e2studio-rx.selectDebugger";
+    this.debuggerItem.command = "e2mcp.selectDebugger";
     this.debuggerItem.tooltip = "Select debug probe";
     this.setDebugger(config.flash.debugger === "E2Lite" ? "E2 Lite" : config.flash.debugger);
     this.debuggerItem.show();

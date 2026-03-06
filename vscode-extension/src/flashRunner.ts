@@ -18,7 +18,7 @@ export class FlashRunner implements vscode.Disposable {
 
   constructor(config: ExtensionConfig) {
     this.config = config;
-    this.flashChannel = vscode.window.createOutputChannel("e2 Studio Flash");
+    this.flashChannel = vscode.window.createOutputChannel("E2 MCP Flash");
   }
 
   /**
@@ -38,7 +38,7 @@ export class FlashRunner implements vscode.Disposable {
     );
 
     const pythonPath = vscode.workspace
-      .getConfiguration("e2studio-rx")
+      .getConfiguration("e2mcp")
       .get<string>("pythonPath", "py");
 
     // Find the MCP server source directory
@@ -151,7 +151,7 @@ export class FlashRunner implements vscode.Disposable {
     if (process.env.E2STUDIO_MCP_CONFIG) return process.env.E2STUDIO_MCP_CONFIG;
 
     const settingPath = vscode.workspace
-      .getConfiguration("e2studio-rx")
+      .getConfiguration("e2mcp")
       .get<string>("configPath");
     if (settingPath && require("fs").existsSync(settingPath)) return settingPath;
 

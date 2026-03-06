@@ -81,11 +81,11 @@ export class ADMConsole implements vscode.Disposable {
     }
 
     const pythonPath = vscode.workspace
-      .getConfiguration("e2studio-rx")
+      .getConfiguration("e2mcp")
       .get<string>("pythonPath", "py");
 
     const pollMs = vscode.workspace
-      .getConfiguration("e2studio-rx")
+      .getConfiguration("e2mcp")
       .get<number>("consolePollMs", 500);
 
     const scriptPath = this.findAdmScript();

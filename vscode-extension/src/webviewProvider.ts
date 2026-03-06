@@ -7,8 +7,8 @@ import {
 } from "./projectManager";
 import { ExtensionConfig } from "./config";
 
-export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "e2studio-rx.panel";
+export class E2McpViewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewType = "e2mcp.panel";
 
   private view?: vscode.WebviewView;
   public projects: ProjectInfo[] = [];
@@ -113,7 +113,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
     }
     // Trim buffer
     while (
-      this.consoleBuffer.length > E2StudioRxViewProvider.MAX_CONSOLE_LINES
+      this.consoleBuffer.length > E2McpViewProvider.MAX_CONSOLE_LINES
     ) {
       this.consoleBuffer.shift();
     }

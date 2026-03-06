@@ -39,7 +39,7 @@ export interface ExtensionConfig {
  * Load e2studio-mcp.json config.
  *
  * Resolution order:
- * 1. `e2studio-rx.configPath` setting
+ * 1. `e2mcp.configPath` setting
  * 2. `E2STUDIO_MCP_CONFIG` env var
  * 3. Auto-detect: walk up from workspace folders looking for e2studio-mcp.json
  */
@@ -48,7 +48,7 @@ export function loadConfig(): ExtensionConfig {
 
   // 1. VS Code setting
   const settingPath = vscode.workspace
-    .getConfiguration("e2studio-rx")
+    .getConfiguration("e2mcp")
     .get<string>("configPath");
   if (settingPath && fs.existsSync(settingPath)) {
     configPath = settingPath;
@@ -95,7 +95,7 @@ export function loadConfig(): ExtensionConfig {
 
   if (!configPath) {
     throw new Error(
-      "e2studio-mcp.json not found. Set e2studio-rx.configPath in settings."
+      "e2studio-mcp.json not found. Set e2mcp.configPath in settings."
     );
   }
 

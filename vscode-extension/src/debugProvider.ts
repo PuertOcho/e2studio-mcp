@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ExtensionConfig } from "./config";
 import { parseLaunchFile, findLaunchFile } from "./launchParser";
-import { E2StudioRxViewProvider } from "./webviewProvider";
+import { E2McpViewProvider } from "./webviewProvider";
 
 /** Map debugger dropdown values to serverParam flag values. */
 const DEBUGGER_MAP: Record<string, string> = {
@@ -26,7 +26,7 @@ const DEBUGGER_MAP: Record<string, string> = {
 export class DebugProvider implements vscode.DebugConfigurationProvider {
   constructor(
     private config: ExtensionConfig,
-    private viewProvider: E2StudioRxViewProvider,
+    private viewProvider: E2McpViewProvider,
   ) {}
 
   /** Show dynamic configs in the debug dropdown even without launch.json. */
