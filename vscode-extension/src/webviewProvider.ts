@@ -1,6 +1,4 @@
 import * as vscode from "vscode";
-import * as fs from "fs";
-import * as path from "path";
 import {
   ProjectInfo,
   MemoryInfo,
@@ -20,6 +18,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
   private memory?: MemoryInfo;
   private consoleBuffer: string[] = [];
   private busy = false;
+  private mcpEnabled = true;
   private static readonly MAX_CONSOLE_LINES = 500;
 
   constructor(
@@ -90,7 +89,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
           this.onCommand(msg.command);
           break;
         case "toggleMcp":
-          this.toggleMcp(msg.value);
+          this.onCommand("toggleMcp");
           break;
         case "refresh":
           this.refreshProjects();
@@ -157,45 +156,16 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /** Update the MCP enabled state and refresh the toggle in the webview. */
+  setMcpEnabled(enabled: boolean): void {
+    this.mcpEnabled = enabled;
+    this.view?.webview.postMessage({ command: "setMcpState", enabled });
+  }
+
   /** Re-render the entire webview with current state. */
   updateWebview(): void {
     if (!this.view) return;
     this.view.webview.html = this.getHtml();
-  }
-
-  private getMcpPaths() {
-    const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!wsPath) return null;
-    return {
-      enabled: path.join(wsPath, ".vscode", "mcp.json"),
-      disabled: path.join(wsPath, ".vscode", "mcp.json.disabled")
-    };
-  }
-
-  private isMcpEnabled(): boolean {
-    const paths = this.getMcpPaths();
-    if (!paths) return false;
-    return fs.existsSync(paths.enabled);
-  }
-
-  private toggleMcp(enable: boolean) {
-    const paths = this.getMcpPaths();
-    if (!paths) return;
-    try {
-      if (enable) {
-        if (fs.existsSync(paths.disabled)) {
-          fs.renameSync(paths.disabled, paths.enabled);
-        }
-      } else {
-        if (fs.existsSync(paths.enabled)) {
-          fs.renameSync(paths.enabled, paths.disabled);
-        }
-      }
-      // Re-render to update toggle UI state
-      this.updateWebview();
-    } catch (e: any) {
-      vscode.window.showErrorMessage(`Failed to toggle MCP: ${e.message}`);
-    }
   }
 
   private getHtml(): string {
@@ -474,17 +444,76 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
     .section-actions:hover {
       opacity: 1;
     }
+
+    /* MCP Toggle */
+    .mcp-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      margin-bottom: var(--section-gap);
+      border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
+    }
+    .mcp-toggle-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+    }
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--vscode-input-background, #3c3c3c);
+      border-radius: 9px;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 2px;
+      bottom: 2px;
+      background: var(--vscode-descriptionForeground, #aaa);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--vscode-button-background);
+    }
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(18px);
+      background: var(--vscode-button-foreground, #fff);
+    }
   </style>
 </head>
 <body>
+  <!-- MCP TOGGLE -->
+  <div class="mcp-toggle-row">
+    <span class="mcp-toggle-label">&#x26A1; MCP Server</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="mcpToggle" ${this.mcpEnabled ? "checked" : ""} />
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+
   <!-- PROJECT -->
   <div class="section">
     <div class="section-header">
       <span>&#x25CB;</span> Project
-      <label class="section-actions" title="Enable/Disable AI MCP Server" style="display:flex; align-items:center; gap:4px; opacity:1;">
-        <span style="font-size:10px; opacity:0.8;">MCP</span>
-        <input type="checkbox" ${this.isMcpEnabled() ? "checked" : ""} onchange="postMsg('toggleMcp', this.checked)" />
-      </label>
+      <span class="section-actions" onclick="postMsg('refresh')" title="Refresh projects">&#x21bb;</span>
     </div>
     ${this.projects.length > 0 ? projectRadios : `<div class="placeholder">No projects found in workspace</div>`}
   </div>
@@ -576,8 +605,21 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
           if (loading) loading.style.display = msg.busy ? 'block' : 'none';
           break;
         }
+        case 'setMcpState': {
+          const toggle = document.getElementById('mcpToggle');
+          if (toggle) toggle.checked = msg.enabled;
+          break;
+        }
       }
     });
+
+    // MCP toggle
+    document.getElementById('mcpToggle')?.addEventListener('change', () => {
+      postMsg('toggleMcp');
+    });
+
+    // Handle MCP state update from extension
+    // (already handled in message listener below via setMcpState)
 
     // Auto-scroll console to bottom on load
     if (consoleEl) {

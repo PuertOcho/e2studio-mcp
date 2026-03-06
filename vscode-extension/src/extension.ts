@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { ADMConsole } from "./admConsole";
 import { StatusBar } from "./statusBar";
 import { loadConfig, ExtensionConfig } from "./config";
@@ -135,6 +136,9 @@ export function activate(context: vscode.ExtensionContext): void {
           }
           break;
         }
+        case "toggleMcp":
+          toggleMcpServer(outputChannel);
+          break;
         case "openConsole":
           admConsole?.startManual();
           break;
@@ -294,7 +298,67 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  // Sync initial MCP toggle state
+  syncMcpToggleState();
+
   outputChannel.appendLine("[e2studio-rx] Activated successfully.");
+}
+
+/** Read mcp.json and sync toggle state to webview. */
+function syncMcpToggleState(): void {
+  const mcpJson = findMcpJson();
+  if (!mcpJson) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(mcpJson, "utf-8"));
+    const server = data?.servers?.["e2studio-mcp"];
+    const enabled = server ? !server.disabled : true;
+    viewProvider?.setMcpEnabled(enabled);
+  } catch { /* ignore */ }
+}
+
+/** Toggle the "disabled" flag in .vscode/mcp.json for e2studio-mcp server. */
+function toggleMcpServer(outputChannel: vscode.OutputChannel): void {
+  const mcpJson = findMcpJson();
+  if (!mcpJson) {
+    vscode.window.showWarningMessage("Could not find .vscode/mcp.json");
+    return;
+  }
+  try {
+    const text = fs.readFileSync(mcpJson, "utf-8");
+    const data = JSON.parse(text);
+    const server = data?.servers?.["e2studio-mcp"];
+    if (!server) {
+      vscode.window.showWarningMessage("e2studio-mcp server not found in mcp.json");
+      return;
+    }
+    const wasDisabled = !!server.disabled;
+    if (wasDisabled) {
+      delete server.disabled;
+    } else {
+      server.disabled = true;
+    }
+    fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
+    const newState = wasDisabled ? "enabled" : "disabled";
+    viewProvider?.setMcpEnabled(wasDisabled);
+    outputChannel.appendLine(`[e2studio-rx] MCP server ${newState}`);
+    vscode.window.showInformationMessage(`MCP server ${newState}.`);
+  } catch (e: any) {
+    vscode.window.showErrorMessage(`Failed to toggle MCP: ${e.message}`);
+  }
+}
+
+/** Locate .vscode/mcp.json in any workspace folder. */
+function findMcpJson(): string | undefined {
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const candidate = path.join(folder.uri.fsPath, ".vscode", "mcp.json");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  // Also try inside e2studio-mcp itself
+  if (config) {
+    const candidate = path.join(config.workspace, "e2studio-mcp", ".vscode", "mcp.json");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 export function deactivate(): void {
