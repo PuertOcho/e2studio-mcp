@@ -17,6 +17,10 @@ export interface ExtensionConfig {
     device: string;
     gdbPort: number;
     debugToolsPath: string;
+    python3BinPath: string;
+    gdbExecutable: string;
+    inputClock: string;
+    idCode: string;
   };
 }
 
@@ -101,6 +105,10 @@ export function loadConfig(): ExtensionConfig {
       device: raw.flash?.device ?? "R5F5651E",
       gdbPort: raw.flash?.gdbPort ?? 61234,
       debugToolsPath: raw.flash?.debugToolsPath ?? "",
+      python3BinPath: raw.flash?.python3BinPath ?? "",
+      gdbExecutable: raw.flash?.gdbExecutable ?? "rx-elf-gdb",
+      inputClock: raw.flash?.inputClock ?? "24.0",
+      idCode: raw.flash?.idCode ?? "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
     },
   };
 }

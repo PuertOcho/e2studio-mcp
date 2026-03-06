@@ -6,6 +6,7 @@ import { loadConfig, ExtensionConfig } from "./config";
 import { E2StudioRxViewProvider } from "./webviewProvider";
 import { BuildRunner } from "./buildRunner";
 import { FlashRunner } from "./flashRunner";
+import { DebugProvider } from "./debugProvider";
 
 let admConsole: ADMConsole | undefined;
 let statusBar: StatusBar | undefined;
@@ -13,6 +14,7 @@ let config: ExtensionConfig | undefined;
 let viewProvider: E2StudioRxViewProvider | undefined;
 let buildRunner: BuildRunner | undefined;
 let flashRunner: FlashRunner | undefined;
+let debugProvider: DebugProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("e2 Studio RX");
@@ -39,6 +41,10 @@ export function activate(context: vscode.ExtensionContext): void {
         device: "R5F5651E",
         gdbPort: 61234,
         debugToolsPath: "",
+        python3BinPath: "",
+        gdbExecutable: "rx-elf-gdb",
+        inputClock: "24.0",
+        idCode: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
       },
     };
   }
@@ -105,8 +111,14 @@ export function activate(context: vscode.ExtensionContext): void {
           vscode.commands.executeCommand("e2studio-rx.flash");
           break;
         case "debug": {
+          // Use the dynamic debug provider — starts F5 with an empty config
+          // which resolveDebugConfiguration() fills in
           const folder = vscode.workspace.workspaceFolders?.[0];
-          vscode.debug.startDebugging(folder, "Debug headc-fw (RX651) + Virtual Console");
+          vscode.debug.startDebugging(folder, {
+            type: "renesas-hardware",
+            request: "launch",
+            name: "Debug (dynamic)",
+          });
           break;
         }
         case "openConsole":
@@ -121,6 +133,12 @@ export function activate(context: vscode.ExtensionContext): void {
       E2StudioRxViewProvider.viewType,
       viewProvider
     )
+  );
+
+  // Dynamic debug configuration provider (F5 without launch.json)
+  debugProvider = new DebugProvider(config, viewProvider);
+  context.subscriptions.push(
+    vscode.debug.registerDebugConfigurationProvider("renesas-hardware", debugProvider)
   );
 
   // Restore persisted selections
