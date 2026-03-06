@@ -46,6 +46,7 @@ export function activate(context: vscode.ExtensionContext): void {
         inputClock: "24.0",
         idCode: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
       },
+      devices: {},
     };
   }
 

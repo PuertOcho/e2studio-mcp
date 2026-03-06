@@ -2,6 +2,16 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
+export interface DeviceInfo {
+  family: string;
+  romSize: number;
+  ramSize: number;
+  dataFlashSize: number;
+  romRange: string;
+  ramRange: string;
+  dataFlashRange: string;
+}
+
 export interface ExtensionConfig {
   workspace: string;
   defaultProject: string;
@@ -22,6 +32,7 @@ export interface ExtensionConfig {
     inputClock: string;
     idCode: string;
   };
+  devices: Record<string, DeviceInfo>;
 }
 
 /**
@@ -110,5 +121,6 @@ export function loadConfig(): ExtensionConfig {
       inputClock: raw.flash?.inputClock ?? "24.0",
       idCode: raw.flash?.idCode ?? "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
     },
+    devices: raw.devices ?? {},
   };
 }

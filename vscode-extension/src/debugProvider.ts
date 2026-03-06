@@ -46,8 +46,8 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
     _folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
   ): vscode.DebugConfiguration | undefined {
-    // Only fill in if config is empty (user pressed F5 with no launch.json)
-    if (!config.type && !config.request && !config.name) {
+    // Fill in if config is empty (F5 with no launch.json) or partial (webview button)
+    if (!config.target) {
       const projectName = this.viewProvider.currentProject || this.config.defaultProject;
       return this.buildConfig(projectName, true);
     }

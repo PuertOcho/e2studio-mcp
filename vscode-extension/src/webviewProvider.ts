@@ -130,8 +130,7 @@ export class E2StudioRxViewProvider implements vscode.WebviewViewProvider {
     if (proj) {
       // Look up device capacities from config
       const deviceKey = this.config.flash.device;
-      const configAny = this.config as any;
-      const deviceInfo = configAny.devices?.[deviceKey];
+      const deviceInfo = this.config.devices[deviceKey];
       this.memory = getMemoryInfo(
         proj.path,
         this.selectedBuildConfig,
