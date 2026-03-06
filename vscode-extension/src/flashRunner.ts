@@ -54,9 +54,9 @@ export class FlashRunner implements vscode.Disposable {
     // Invoke Python: py -c "from e2studio_mcp.flash import flash_firmware; ..."
     const script = [
       "import json",
-      "from e2studio_mcp.config import Config",
+      "from e2studio_mcp.config import load_config",
       "from e2studio_mcp.flash import flash_firmware",
-      "cfg = Config.load()",
+      "cfg = load_config()",
       `result = flash_firmware(cfg, project="${this.escPy(project)}")`,
       "print(json.dumps(result))",
     ].join("; ");
