@@ -493,6 +493,329 @@ dev = [
 
 ---
 
+---
+
+## Fase 5: Extensión VS Code — e2studio-rx
+
+> **Estado:** 🟡 Planificado (MVP)
+> **Repo:** `e2studio-mcp/vscode-extension/` (mismo repo, subfolder)
+> **Stack:** TypeScript + VS Code Extension API
+> **Nombre publicación:** `e2studio-rx`
+> **ID:** `PuertOcho.e2studio-rx`
+
+### Objetivo
+
+Extensión ligera de VS Code que **orquesta todo lo que ya funciona** (MCP server Python, ADM console, launch.json) y lo presenta con una UX nativa integrada. No reimplementa lógica — llama al backend Python existente y se engancha a eventos del debug adapter de Renesas.
+
+### Arquitectura MVP
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  VS Code                                                     │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────────┐  ┌───────────────┐ │
+│  │  Status Bar   │  │  Output Channel  │  │  Tree View    │ │
+│  │  [headc-fw]   │  │  "Renesas        │  │  (Sidebar)    │ │
+│  │  [E2 Lite]    │  │   Virtual        │  │  Projects     │ │
+│  │  [Build ✓]    │  │   Console"       │  │  Memory Map   │ │
+│  └──────┬───────┘  └────────┬─────────┘  └───────┬───────┘ │
+│         │                   │                     │          │
+│  ┌──────┴───────────────────┴─────────────────────┴───────┐ │
+│  │              Extension Host (TypeScript)                │ │
+│  │                                                         │ │
+│  │  ProjectManager    ADMConsole      BuildRunner          │ │
+│  │  (scan .cproject)  (spawn Python   (spawn make/        │ │
+│  │                     adm_console)    e2studioc)          │ │
+│  └─────────┬──────────────┬───────────────┬───────────────┘ │
+│            │              │               │                  │
+└────────────┼──────────────┼───────────────┼──────────────────┘
+             │              │               │
+             ▼              ▼               ▼
+        .cproject      e2-server-gdb    make / CCRX
+        .launch XML    ADM port (TCP)   HardwareDebug/
+```
+
+### Funcionalidades MVP (v0.1.0)
+
+#### F1 — Virtual Console (OutputChannel) ⭐ Prioridad máxima
+
+La funcionalidad estrella. Replica la "Renesas Debug Virtual Console" de e2 Studio.
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Trigger** | Auto-start al detectar `vscode.debug.onDidStartDebugSession` con `type === "renesas-hardware"` |
+| **Mecanismo** | Spawn `py scripts/adm_console.py` como child process, capturar stdout |
+| **Visualización** | `vscode.window.createOutputChannel("Renesas Virtual Console")` — se muestra como pestaña en panel Output |
+| **Stop** | Auto-kill del child process en `vscode.debug.onDidTerminateDebugSession` |
+| **Auto-detección** | El script Python ya detecta el puerto ADM via `tasklist` + `netstat` |
+| **Fallback** | Si el puerto no se detecta en 15s, mostrar warning con opción de reintentar |
+
+**Implementación:**
+```typescript
+// Pseudocódigo — ciclo de vida de la consola
+debug.onDidStartDebugSession(session => {
+    if (session.type !== "renesas-hardware") return;
+    
+    const channel = window.createOutputChannel("Renesas Virtual Console");
+    channel.show(true);  // Show but don't steal focus
+    
+    const proc = spawn("py", [admConsolePath, "--raw"]);
+    proc.stdout.on("data", chunk => channel.append(chunk.toString()));
+    proc.stderr.on("data", chunk => channel.append(`[ERR] ${chunk}`));
+    
+    // Store for cleanup
+    activeConsole = { proc, channel };
+});
+
+debug.onDidTerminateDebugSession(session => {
+    if (activeConsole) {
+        activeConsole.proc.kill();
+        activeConsole = null;
+    }
+});
+```
+
+**Cambio necesario en `adm_console.py`:** Añadir flag `--raw` que desactiva los mensajes de diagnóstico y solo imprime texto del target (sin `[*] Connecting...`, sin `[idle]`). La extensión parsea el stream limpio.
+
+#### F2 — Project Selector (StatusBar)
+
+Botón en la barra inferior que muestra/cambia el proyecto activo.
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Visualización** | `$(circuit-board) headc-fw` en StatusBar (izquierda, prioridad 100) |
+| **Click** | `vscode.window.showQuickPick()` con lista de proyectos escaneados |
+| **Scan** | Lee todos los `.cproject` en el workspace configurado (reutiliza lógica de `list_projects` del MCP) |
+| **Persistencia** | Guarda selección en `workspaceState` |
+| **Efecto** | Cambia el proyecto activo para Build, Flash y Debug |
+
+**Datos por proyecto (del .cproject):**
+- Nombre, Device (R5F5651E), Family (RX651), Toolchain (CCRX v3.07.00)
+- Configs de build disponibles (HardwareDebug, etc.)
+- Archivos .launch disponibles
+
+#### F3 — Debugger Selector (StatusBar)
+
+Botón que selecciona el emulador hardware.
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Visualización** | `$(plug) E2 Lite` en StatusBar |
+| **Opciones** | `E2 Lite`, `E1`, `E2`, `J-Link`, `Simulator` — filtrado según extensiones Renesas instaladas |
+| **Efecto** | Modifica `debuggerType` en el launch.json dinámico |
+| **Valores** | `E2LITE`, `E1`, `E2`, `JLINK`, según el `configurationAttributes` de la extensión Renesas |
+
+#### F4 — Build Task Integration
+
+Comandos de build accesibles desde Command Palette y atajos.
+
+| Comando | Acción | Atajo sugerido |
+|---------|--------|----------------|
+| `e2studio-rx.build` | `make -C HardwareDebug all` del proyecto activo | `Ctrl+Shift+B` (default build) |
+| `e2studio-rx.clean` | `make -C HardwareDebug clean` | — |
+| `e2studio-rx.rebuild` | clean + build secuencial | — |
+| `e2studio-rx.flash` | Flash .mot al target (usa `flash.py` via Python subprocess) | — |
+
+**Implementación:** Registrar como `TaskProvider` de VS Code para que aparezcan en "Run Task" y se puedan asignar a keybindings.
+
+**Diagnóstico:** Parsear la salida del build con los mismos regex de CCRX que ya tiene `build.py` y publicar como `vscode.DiagnosticCollection` → las líneas con error/warning aparecen subrayadas en rojo/amarillo en el editor.
+
+#### F5 — Dynamic Launch Config (DebugConfigurationProvider)
+
+En lugar de mantener un `launch.json` estático, generarlo dinámicamente.
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Mecanismo** | Registrar `vscode.debug.registerDebugConfigurationProvider("renesas-hardware", provider)` |
+| **Trigger** | Al pulsar F5 sin launch.json, o al seleccionar "e2studio-rx: Debug" |
+| **Genera** | La misma config que ahora está hardcodeada en launch.json, pero con valores dinámicos según proyecto y debugger seleccionados |
+| **Fuente de datos** | Parsea el `.launch` de e2 Studio del proyecto activo (reutiliza `parse_launch_file()` de `flash.py`) |
+
+Esto elimina la necesidad de editar `launch.json` manualmente.
+
+### Estructura del Proyecto
+
+```
+e2studio-mcp/
+├── ... (Python MCP server existente)
+└── vscode-extension/
+    ├── package.json
+    ├── tsconfig.json
+    ├── .vscodeignore
+    ├── README.md
+    ├── CHANGELOG.md
+    ├── resources/
+    │   └── icon.png
+    └── src/
+        ├── extension.ts          # activate/deactivate, registros
+        ├── projectManager.ts     # Escaneo .cproject, selección proyecto
+        ├── admConsole.ts         # Spawn adm_console.py, OutputChannel
+        ├── buildRunner.ts        # Spawn make, TaskProvider, DiagnosticCollection
+        ├── debugProvider.ts      # DebugConfigurationProvider dinámico
+        ├── launchParser.ts       # Parser de .launch XML de e2 Studio
+        ├── statusBar.ts          # StatusBarItems (proyecto, debugger, build)
+        └── config.ts             # Lectura de e2studio-mcp.json
+```
+
+### package.json (contributes)
+
+```jsonc
+{
+  "name": "e2studio-rx",
+  "displayName": "e2 Studio RX — Build, Flash & Debug",
+  "publisher": "PuertOcho",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Debuggers", "Other"],
+  "activationEvents": [
+    "workspaceContains:**/.cproject",
+    "onDebugResolve:renesas-hardware"
+  ],
+  "extensionDependencies": [
+    "renesaselectronicscorporation.renesas-debug"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "e2studio-rx.selectProject",  "title": "Select Project",    "category": "e2 Studio RX" },
+      { "command": "e2studio-rx.selectDebugger", "title": "Select Debugger",   "category": "e2 Studio RX" },
+      { "command": "e2studio-rx.build",          "title": "Build Project",     "category": "e2 Studio RX" },
+      { "command": "e2studio-rx.clean",          "title": "Clean Project",     "category": "e2 Studio RX" },
+      { "command": "e2studio-rx.rebuild",        "title": "Rebuild Project",   "category": "e2 Studio RX" },
+      { "command": "e2studio-rx.flash",          "title": "Flash Firmware",    "category": "e2 Studio RX" },
+      { "command": "e2studio-rx.openConsole",    "title": "Open Virtual Console", "category": "e2 Studio RX" }
+    ],
+    "configuration": {
+      "title": "e2 Studio RX",
+      "properties": {
+        "e2studio-rx.configPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to e2studio-mcp.json configuration file"
+        },
+        "e2studio-rx.pythonPath": {
+          "type": "string",
+          "default": "py",
+          "description": "Python executable (py, python3, python)"
+        },
+        "e2studio-rx.consolePollMs": {
+          "type": "number",
+          "default": 500,
+          "description": "Virtual console polling interval in milliseconds"
+        }
+      }
+    },
+    "taskDefinitions": [
+      {
+        "type": "e2studio-rx",
+        "required": ["task"],
+        "properties": {
+          "task": { "type": "string", "enum": ["build", "clean", "rebuild", "flash"] },
+          "project": { "type": "string" },
+          "config": { "type": "string", "default": "HardwareDebug" }
+        }
+      }
+    ]
+  }
+}
+```
+
+### APIs de VS Code utilizadas
+
+| API | Uso | Módulo |
+|-----|-----|--------|
+| `vscode.debug.onDidStartDebugSession` | Detectar inicio de debug Renesas → lanzar consola ADM | `admConsole.ts` |
+| `vscode.debug.onDidTerminateDebugSession` | Limpiar child process consola | `admConsole.ts` |
+| `vscode.debug.registerDebugConfigurationProvider` | Generar launch config dinámico | `debugProvider.ts` |
+| `vscode.window.createOutputChannel` | Panel "Renesas Virtual Console" | `admConsole.ts` |
+| `vscode.window.createStatusBarItem` | Botones proyecto/debugger/build | `statusBar.ts` |
+| `vscode.window.showQuickPick` | Selector de proyecto/debugger | `projectManager.ts` |
+| `vscode.tasks.registerTaskProvider` | Build/Clean/Flash como Tasks | `buildRunner.ts` |
+| `vscode.languages.createDiagnosticCollection` | Errores CCRX en editor | `buildRunner.ts` |
+| `child_process.spawn` | Ejecutar `py adm_console.py`, `make`, etc. | Varios |
+| `vscode.workspace.getConfiguration` | Settings de la extensión | `config.ts` |
+| `context.workspaceState` | Persistir proyecto/debugger seleccionado | `projectManager.ts` |
+| `xml2js` o DOM parser | Parsear .cproject/.launch XML | `launchParser.ts` |
+
+### Dependencias npm
+
+```json
+"dependencies": {
+  "fast-xml-parser": "^4.3.0"
+},
+"devDependencies": {
+  "@types/vscode": "^1.85.0",
+  "@types/node": "^20.0.0",
+  "typescript": "^5.3.0",
+  "esbuild": "^0.20.0",
+  "@vscode/vsce": "^2.24.0"
+}
+```
+
+*Nota: `fast-xml-parser` en lugar de `lxml` — necesitamos parsear .cproject y .launch desde TypeScript sin depender del Python backend para esto.*
+
+### Plan de Implementación (por fases)
+
+#### Sprint 1: Scaffold + Virtual Console (Core MVP)
+
+| # | Tarea | Detalle |
+|---|-------|---------|
+| 1 | Scaffold | `yo code` o manual: package.json, tsconfig, esbuild, .vscodeignore |
+| 2 | `extension.ts` | activate/deactivate básico, logging |
+| 3 | `config.ts` | Leer `e2studio-mcp.json` (paths, workspace, devices) |
+| 4 | `admConsole.ts` | Spawn `adm_console.py --raw`, OutputChannel, lifecycle hooks |
+| 5 | Modificar `adm_console.py` | Añadir flag `--raw` (solo texto target, sin diagnósticos) |
+| 6 | Hooks de debug session | `onDidStart` → lanzar consola, `onDidTerminate` → cerrar |
+| 7 | Test manual | F5 debug → consola aparece automáticamente con printf output |
+
+**Entregable:** Al pulsar F5 para debug Renesas, aparece automáticamente una pestaña "Renesas Virtual Console" con el output del target.
+
+#### Sprint 2: Project + Debugger Selector
+
+| # | Tarea | Detalle |
+|---|-------|---------|
+| 8 | `projectManager.ts` | Escaneo de .cproject, QuickPick, persistencia |
+| 9 | `launchParser.ts` | Parser de .launch XML en TypeScript |
+| 10 | `statusBar.ts` | StatusBarItems para proyecto y debugger |
+| 11 | `debugProvider.ts` | DebugConfigurationProvider dinámico |
+| 12 | Test manual | Cambiar proyecto en StatusBar → F5 usa el proyecto correcto |
+
+**Entregable:** F5 funciona sin launch.json manual. StatusBar muestra proyecto activo.
+
+#### Sprint 3: Build Integration
+
+| # | Tarea | Detalle |
+|---|-------|---------|
+| 13 | `buildRunner.ts` | TaskProvider con make backend, output parsing |
+| 14 | Diagnostics | CCRX error/warning regex → DiagnosticCollection |
+| 15 | StatusBar build | Indicador de último build (✓/✗) + ROM/RAM % |
+| 16 | Flash command | `e2studio-rx.flash` usando `flash.py` subprocess |
+| 17 | Test E2E | Build → Flash → Debug → Console — ciclo completo sin e2 Studio |
+
+**Entregable:** Ctrl+Shift+B compila, errores aparecen en editor, Flash desde command palette.
+
+### Riesgos y Mitigaciones
+
+| Riesgo | Impacto | Mitigación |
+|--------|---------|------------|
+| `adm_console.py` depende de Python instalado | Extensión no funciona sin Python | Verificar `py` en activate(), mostrar error claro con link a instalar |
+| Puerto ADM variable (no siempre el mismo) | Consola no conecta | Auto-detección ya funciona (tasklist+netstat). Añadir retry con backoff |
+| Extensión Renesas Debug no instalada | F5 no funciona | `extensionDependencies` en package.json fuerza instalación |
+| .cproject XML varía entre versiones e2 Studio | Parser falla | Parser defensivo con fallbacks (ya probado en project.py) |
+| Conflicto si e2 Studio y VS Code usan E2 Lite simultáneamente | Debug falla | Detectar proceso e2-server-gdb previo y avisar usuario |
+| `make` no en PATH | Build falla | Leer `makePath` de e2studio-mcp.json, añadir al PATH del subprocess |
+
+### Criterio de MVP Completado
+
+- [ ] F5 en VS Code → debug session conecta al target via E2 Lite
+- [ ] OutputChannel "Renesas Virtual Console" muestra printf del target automáticamente
+- [ ] StatusBar muestra proyecto activo y permite cambiar
+- [ ] Build desde Command Palette, errores visibles en editor
+- [ ] Flash desde Command Palette  
+- [ ] Cero dependencia de e2 Studio abierto para el workflow diario
+
+---
+
 ## Changelog
 
 ### 2026-03-06 (Debug nativo VS Code y Virtual Console)
