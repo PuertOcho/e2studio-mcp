@@ -3,7 +3,7 @@
 > **Ubicación:** `e2Studio_2024_workspace/e2studio-mcp/`
 > **Stack:** Python + MCP SDK (`mcp` package), servidor stdio
 > **Inicio:** Marzo 2026
-> **Última actualización:** 2026-03-03 (Implementación completa — Fases 0-4)
+> **Última actualización:** 2026-03-06 (Debug Nativo VS Code + ADM Console)
 
 ---
 
@@ -494,6 +494,11 @@ dev = [
 ---
 
 ## Changelog
+
+### 2026-03-06 (Debug nativo VS Code y Virtual Console)
+- **VS Code Debug:** Creación de `.vscode/launch.json` funcional para RX651 + E2 Lite, usando extensión `renesaselectronicscorporation.renesas-debug`. Interrumpe correctamente en `PowerON_Reset_PC`.
+- **ADM Virtual Console:** Ingeniería inversa del protocolo binario ADM (`ISimulatedIO`) usado en los plugins Java de e2 Studio.
+- **Python Client:** Creación de `scripts/adm_console.py` que se conecta a la sesión de GDB, interactúa con el buffer de memoria del E2 Lite (0x84080) y decodea los printfs para visualizarlos en texto plano en terminal.
 
 ### 2026-03-03 (Implementación completa)
 - **Fase 0 — Scaffold:** pyproject.toml, e2studio-mcp.json, config.py, server.py, .vscode/mcp.json, .gitignore
