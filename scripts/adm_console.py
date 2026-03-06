@@ -363,6 +363,8 @@ if __name__ == "__main__":
             if not args.raw:
                 print("[!] Could not auto-detect ADM port.")
                 print("    Ensure debug session is running and 'monitor start_interface,ADM,main' was executed.")
+            else:
+                print("ADM port not found", file=sys.stderr)
             sys.exit(1)
         if not args.raw:
             print(f"[*] Found e2-server-gdb PID {pid}, ADM port {selected_port}")

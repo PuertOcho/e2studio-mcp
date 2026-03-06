@@ -95,6 +95,10 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       }
       if (parsed.initCommands.length > 0) {
         initCommands = parsed.initCommands;
+        // Ensure ADM virtual console is always enabled (e2 Studio .launch doesn't include it)
+        if (!initCommands.some((c) => c.includes("start_interface,ADM"))) {
+          initCommands.push("monitor start_interface,ADM,main");
+        }
       }
       if (parsed.gdbFlags) {
         gdbArguments = parsed.gdbFlags.split(/\s+/).filter(Boolean);
