@@ -112,14 +112,12 @@ export function activate(context: vscode.ExtensionContext): void {
           vscode.commands.executeCommand("e2studio-rx.flash");
           break;
         case "debug": {
-          // Use the dynamic debug provider — starts F5 with an empty config
-          // which resolveDebugConfiguration() fills in
-          const folder = vscode.workspace.workspaceFolders?.[0];
-          vscode.debug.startDebugging(folder, {
-            type: "renesas-hardware",
-            request: "launch",
-            name: "Debug (dynamic)",
-          });
+          if (debugProvider && config) {
+            const project = viewProvider?.currentProject || config.defaultProject;
+            const fullConfig = debugProvider.buildConfig(project, true);
+            const folder = vscode.workspace.workspaceFolders?.[0];
+            vscode.debug.startDebugging(folder, fullConfig);
+          }
           break;
         }
         case "openConsole":

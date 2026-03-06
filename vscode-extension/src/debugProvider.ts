@@ -55,7 +55,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
   }
 
   /** Build a complete Renesas debug configuration. */
-  private buildConfig(projectName: string, stopOnEntry: boolean): vscode.DebugConfiguration {
+  buildConfig(projectName: string, stopOnEntry: boolean): vscode.DebugConfiguration {
     const workspace = this.config.workspace;
     const buildConfig = this.viewProvider.currentBuildConfig || this.config.buildConfig;
     const debuggerType = this.viewProvider.currentDebugger || "E2LITE";
