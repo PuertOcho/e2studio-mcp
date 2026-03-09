@@ -3,6 +3,7 @@
   "defaultProject": "headc-fw",
   "buildConfig": "HardwareDebug",
   "buildMode": "make",
+  "buildJobs": 0,
   "toolchain": {
     "ccrxPath": "C:/Program Files (x86)/Renesas/RX/3_7_0/bin",
     "e2studioPath": "C:/Renesas/e2_studio/eclipse",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -110,7 +111,90 @@ def _find_output_file(project_path: Path, config: str) -> str:
     return ""
 
 
-def _run_make(project_path: Path, config: str, target: str, make_cmd: str) -> BuildResult:
+def _find_busybox_bin(cfg: Config) -> str | None:
+    """Find the Renesas busybox bin directory that provides sed/sh for makefiles."""
+    if not cfg.toolchain.e2studio_path:
+        return None
+
+    plugins_dir = Path(cfg.toolchain.e2studio_path) / "plugins"
+    if not plugins_dir.exists():
+        return None
+
+    for entry in sorted(plugins_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        if not entry.name.startswith("com.renesas.ide.exttools.busybox.win32"):
+            continue
+        bin_dir = entry / "bin"
+        if (bin_dir / "sed.exe").exists() and (bin_dir / "sh.exe").exists():
+            return str(bin_dir)
+
+    return None
+
+
+def _find_ccrx_utilities_dir() -> str | None:
+    """Find the user-scoped Renesas utility directory that provides renesas_cc_converter."""
+    home_dir = os.environ.get("USERPROFILE") or os.environ.get("HOME")
+    if not home_dir:
+        return None
+
+    eclipse_dir = Path(home_dir) / ".eclipse"
+    if not eclipse_dir.exists():
+        return None
+
+    for entry in sorted(eclipse_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        if not entry.name.startswith("com.renesas.platform_"):
+            continue
+        util_dir = entry / "Utilities" / "ccrx"
+        if (util_dir / "renesas_cc_converter.exe").exists():
+            return str(util_dir)
+
+    return None
+
+
+def _make_env(cfg: Config) -> dict[str, str]:
+    """Build PATH expected by e2 Studio generated makefiles."""
+    env = os.environ.copy()
+    path_key = next((key for key in env if key.lower() == "path"), "PATH")
+    current_path = env.get(path_key, "")
+    entries: list[str] = []
+
+    for candidate in [
+        cfg.toolchain.ccrx_path,
+        cfg.toolchain.make_path,
+        _find_busybox_bin(cfg),
+        _find_ccrx_utilities_dir(),
+    ]:
+        if candidate and Path(candidate).exists():
+            entries.append(str(candidate))
+
+    merged = entries + [part for part in current_path.split(os.pathsep) if part]
+    env[path_key] = os.pathsep.join(dict.fromkeys(merged))
+    return env
+
+
+def _detect_build_jobs(cfg: Config) -> int:
+    """Resolve configured parallel jobs. 0 means auto-detect from logical CPUs."""
+    if cfg.build_jobs > 0:
+        return cfg.build_jobs
+
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(16, cpu_count))
+
+
+def _make_args(build_dir: Path, target: str, cfg: Config) -> list[str]:
+    """Build make arguments, enabling parallel compilation when configured."""
+    args = ["-C", str(build_dir)]
+    build_jobs = _detect_build_jobs(cfg)
+    if target == "all" and build_jobs > 1:
+        args.extend([f"-j{build_jobs}", "--output-sync=target"])
+    args.append(target)
+    return args
+
+
+def _run_make(project_path: Path, config: str, target: str, make_cmd: str, cfg: Config) -> BuildResult:
     """Run build via make."""
     build_dir = project_path / config
     if not build_dir.exists():
@@ -118,7 +202,7 @@ def _run_make(project_path: Path, config: str, target: str, make_cmd: str) -> Bu
             success=False, output=f"Build directory not found: {build_dir}",
         )
 
-    cmd = [make_cmd, "-C", str(build_dir), target]
+    cmd = [make_cmd, *_make_args(build_dir, target, cfg)]
     t0 = time.monotonic()
 
     try:
@@ -128,6 +212,7 @@ def _run_make(project_path: Path, config: str, target: str, make_cmd: str) -> Bu
             text=True,
             timeout=300,
             cwd=str(project_path),
+            env=_make_env(cfg),
         )
         duration = int((time.monotonic() - t0) * 1000)
         combined = proc.stdout + "\n" + proc.stderr
@@ -233,7 +318,7 @@ def build_project(
             cfg.get_e2studioc(), cfg.workspace_path,
         )
     else:
-        result = _run_make(proj_path, build_cfg, "all", cfg.get_make())
+        result = _run_make(proj_path, build_cfg, "all", cfg.get_make(), cfg)
 
     _last_build_output[proj_name] = result
     return result.to_dict()
@@ -258,7 +343,7 @@ def clean_project(
             clean_build=True,
         )
     else:
-        result = _run_make(proj_path, build_cfg, "clean", cfg.get_make())
+        result = _run_make(proj_path, build_cfg, "clean", cfg.get_make(), cfg)
 
     return result.to_dict()
 

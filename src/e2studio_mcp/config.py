@@ -45,6 +45,7 @@ class Config:
     default_project: str = "headc-fw"
     build_config: str = "HardwareDebug"
     build_mode: str = "make"
+    build_jobs: int = 0
     toolchain: ToolchainConfig = field(default_factory=ToolchainConfig)
     flash: FlashConfig = field(default_factory=FlashConfig)
     devices: dict[str, DeviceInfo] = field(default_factory=dict)
@@ -140,6 +141,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
         default_project=raw.get("defaultProject", "headc-fw"),
         build_config=raw.get("buildConfig", "HardwareDebug"),
         build_mode=raw.get("buildMode", "make"),
+        build_jobs=max(0, int(raw.get("buildJobs", 0))),
         toolchain=_parse_toolchain(raw.get("toolchain", {})),
         flash=_parse_flash(raw.get("flash", {})),
         devices=_parse_devices(raw.get("devices", {})),

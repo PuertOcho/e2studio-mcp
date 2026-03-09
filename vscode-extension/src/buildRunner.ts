@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
 import { ExtensionConfig } from "./config";
 
@@ -44,12 +45,97 @@ export class BuildRunner implements vscode.Disposable {
   private getMakeCmd(): string {
     if (this.config.toolchain.makePath) {
       const candidate = path.join(this.config.toolchain.makePath, "make.exe");
-      if (require("fs").existsSync(candidate)) return candidate;
+      if (fs.existsSync(candidate)) return candidate;
       const candidate2 = path.join(this.config.toolchain.makePath, "make");
-      if (require("fs").existsSync(candidate2)) return candidate2;
+      if (fs.existsSync(candidate2)) return candidate2;
       return this.config.toolchain.makePath;
     }
     return "make";
+  }
+
+  /** Find the Renesas busybox bin directory that provides sed/sh for generated makefiles. */
+  private getBusyboxBin(): string | undefined {
+    if (!this.config.toolchain.e2studioPath) {
+      return undefined;
+    }
+
+    const pluginsDir = path.join(this.config.toolchain.e2studioPath, "plugins");
+    if (!fs.existsSync(pluginsDir)) {
+      return undefined;
+    }
+
+    const entries = fs
+      .readdirSync(pluginsDir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name.startsWith("com.renesas.ide.exttools.busybox.win32")
+      )
+      .map((entry) => path.join(pluginsDir, entry.name, "bin"));
+
+    return entries.find((binDir) => {
+      const sedExe = path.join(binDir, "sed.exe");
+      const shExe = path.join(binDir, "sh.exe");
+      return fs.existsSync(sedExe) && fs.existsSync(shExe);
+    });
+  }
+
+  /** Find the user-scoped Renesas utility directory that provides renesas_cc_converter. */
+  private getCcrxUtilitiesDir(): string | undefined {
+    const homeDir = process.env.USERPROFILE ?? process.env.HOME;
+    if (!homeDir) {
+      return undefined;
+    }
+
+    const eclipseDir = path.join(homeDir, ".eclipse");
+    if (!fs.existsSync(eclipseDir)) {
+      return undefined;
+    }
+
+    const entries = fs
+      .readdirSync(eclipseDir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name.startsWith("com.renesas.platform_")
+      )
+      .map((entry) => path.join(eclipseDir, entry.name, "Utilities", "ccrx"));
+
+    return entries.find((dir) => fs.existsSync(path.join(dir, "renesas_cc_converter.exe")));
+  }
+
+  /** Compose the PATH expected by e2 Studio generated makefiles. */
+  private getBuildEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    const currentPath = env[pathKey] ?? "";
+    const nextEntries: string[] = [];
+
+    const prependIfExists = (dir: string | undefined) => {
+      if (!dir || !fs.existsSync(dir)) {
+        return;
+      }
+      nextEntries.push(dir);
+    };
+
+    prependIfExists(this.config.toolchain.ccrxPath);
+    prependIfExists(this.config.toolchain.makePath);
+    prependIfExists(this.getBusyboxBin());
+    prependIfExists(this.getCcrxUtilitiesDir());
+
+    const merged = [...nextEntries, ...currentPath.split(path.delimiter).filter(Boolean)];
+    env[pathKey] = Array.from(new Set(merged)).join(path.delimiter);
+    return env;
+  }
+
+  /** Build make arguments, enabling parallel compilation when configured. */
+  private getMakeArgs(buildDir: string, target: string): string[] {
+    const args = ["-C", buildDir];
+    if (target === "all" && this.config.buildJobs > 1) {
+      args.push(`-j${this.config.buildJobs}`, "--output-sync=target");
+    }
+    args.push(target);
+    return args;
   }
 
   /**
@@ -73,7 +159,7 @@ export class BuildRunner implements vscode.Disposable {
     const projPath = this.projectPath(project);
     const buildDir = path.join(projPath, buildConfig);
 
-    if (!require("fs").existsSync(buildDir)) {
+    if (!fs.existsSync(buildDir)) {
       vscode.window.showErrorMessage(
         `Build directory not found: ${buildDir}`
       );
@@ -105,16 +191,20 @@ export class BuildRunner implements vscode.Disposable {
   ): Promise<{ success: boolean; errors: number; warnings: number }> {
     return new Promise((resolve) => {
       const makeCmd = this.getMakeCmd();
-      const args = ["-C", buildDir, target];
+      const args = this.getMakeArgs(buildDir, target);
       const t0 = Date.now();
 
       this.buildChannel.appendLine(`[build] ${makeCmd} ${args.join(" ")}`);
+      if (target === "all" && this.config.buildJobs > 1) {
+        this.buildChannel.appendLine(`[build] Parallel jobs: ${this.config.buildJobs}`);
+      }
 
       let output = "";
 
       try {
         this.activeProc = spawn(makeCmd, args, {
           cwd: projPath,
+          env: this.getBuildEnv(),
           stdio: ["ignore", "pipe", "pipe"],
           windowsHide: true,
         });

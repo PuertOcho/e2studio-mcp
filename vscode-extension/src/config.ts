@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
@@ -17,6 +18,7 @@ export interface ExtensionConfig {
   defaultProject: string;
   buildConfig: string;
   buildMode: string;
+  buildJobs: number;
   toolchain: {
     ccrxPath: string;
     e2studioPath: string;
@@ -33,6 +35,18 @@ export interface ExtensionConfig {
     idCode: string;
   };
   devices: Record<string, DeviceInfo>;
+}
+
+function resolveBuildJobs(rawValue: unknown): number {
+  const configured = Number(rawValue ?? 0);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.floor(configured);
+  }
+
+  const availableParallelism = typeof os.availableParallelism === "function"
+    ? os.availableParallelism()
+    : os.cpus().length;
+  return Math.max(1, Math.min(16, availableParallelism || 1));
 }
 
 /**
@@ -106,6 +120,7 @@ export function loadConfig(): ExtensionConfig {
     defaultProject: raw.defaultProject ?? "headc-fw",
     buildConfig: raw.buildConfig ?? "HardwareDebug",
     buildMode: raw.buildMode ?? "make",
+    buildJobs: resolveBuildJobs(raw.buildJobs),
     toolchain: {
       ccrxPath: raw.toolchain?.ccrxPath ?? "",
       e2studioPath: raw.toolchain?.e2studioPath ?? "",

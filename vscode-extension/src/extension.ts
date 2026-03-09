@@ -36,6 +36,7 @@ export function activate(context: vscode.ExtensionContext): void {
       defaultProject: "headc-fw",
       buildConfig: "HardwareDebug",
       buildMode: "make",
+      buildJobs: 16,
       toolchain: { ccrxPath: "", e2studioPath: "", makePath: "" },
       flash: {
         debugger: "E2Lite",

@@ -92,6 +92,7 @@ El servidor resuelve la configuración en este orden:
   "defaultProject": "headc-fw",
   "buildConfig": "HardwareDebug",
   "buildMode": "make",
+  "buildJobs": 0,
   "toolchain": {
     "ccrxPath": "C:/Program Files (x86)/Renesas/RX/3_7_0/bin",
     "e2studioPath": "C:/Renesas/e2_studio/eclipse",
@@ -109,6 +110,7 @@ El servidor resuelve la configuración en este orden:
 Notas:
 
 - `buildMode` soporta `make` o `e2studioc`.
+- `buildJobs: 0` activa autodetección por núcleos lógicos, con tope de `16` para parecerse al comportamiento de e2 Studio.
 - Las capacidades en `devices` se usan para porcentajes ROM/RAM/DataFlash.
 - Si no se define `debugToolsPath`, se intentan rutas de autodetección conocidas.
 
@@ -160,6 +162,7 @@ npm run compile
 - `e2mcp.configPath`: ruta a `e2studio-mcp.json`
 - `e2mcp.pythonPath`: ejecutable de Python (`py`, `python3`, `python`)
 - `e2mcp.consolePollMs`: intervalo de sondeo de consola virtual
+- `buildJobs` en `e2studio-mcp.json`: número de compilaciones paralelas para `make`. Usa `0` para modo automático según CPU, con máximo `16`.
 
 ## Testing
 
@@ -181,6 +184,7 @@ py -3 tests/smoke_test.py
 
 - `Config file not found`: definir `E2STUDIO_MCP_CONFIG` o crear `e2studio-mcp.json` en la raíz.
 - `make not found`: revisar `toolchain.makePath`.
+- `sed`, `ccrx` o `renesas_cc_converter` no encontrados durante `make`: comprobar `toolchain.e2studioPath` y `toolchain.ccrxPath`. La extensión y el backend añaden automáticamente BusyBox de Renesas, CCRX y las utilidades `Utilities/ccrx` de `.eclipse` al `PATH` del build.
 - `e2studioc not found`: comprobar `toolchain.e2studioPath` apuntando a `.../eclipse`.
 - `Cannot find e2-server-gdb`: definir `flash.debugToolsPath` explícitamente.
 - `No .mot file found`: compilar antes de grabar.
