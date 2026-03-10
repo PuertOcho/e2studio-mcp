@@ -7,6 +7,7 @@ import { ExtensionConfig } from "./config";
 export class StatusBar implements vscode.Disposable {
   private projectItem: vscode.StatusBarItem;
   private debuggerItem: vscode.StatusBarItem;
+  private launchItem: vscode.StatusBarItem;
 
   constructor(config: ExtensionConfig) {
     // Project selector — left side, high priority
@@ -28,6 +29,15 @@ export class StatusBar implements vscode.Disposable {
     this.debuggerItem.tooltip = "Select debug probe";
     this.setDebugger(config.flash.debugger === "E2Lite" ? "E2 Lite" : config.flash.debugger);
     this.debuggerItem.show();
+
+    this.launchItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      98
+    );
+    this.launchItem.command = "e2mcp.selectLaunch";
+    this.launchItem.tooltip = "Select .launch file or use auto-detect";
+    this.setLaunch("Auto Launch");
+    this.launchItem.show();
   }
 
   setProject(name: string): void {
@@ -38,8 +48,13 @@ export class StatusBar implements vscode.Disposable {
     this.debuggerItem.text = `$(plug) ${name}`;
   }
 
+  setLaunch(name: string): void {
+    this.launchItem.text = `$(file-symlink-file) ${name}`;
+  }
+
   dispose(): void {
     this.projectItem.dispose();
     this.debuggerItem.dispose();
+    this.launchItem.dispose();
   }
 }

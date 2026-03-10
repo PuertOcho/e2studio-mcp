@@ -52,6 +52,11 @@
         "category": "E2 MCP"
       },
       {
+        "command": "e2mcp.selectLaunch",
+        "title": "Select Launch File",
+        "category": "E2 MCP"
+      },
+      {
         "command": "e2mcp.build",
         "title": "Build Project",
         "category": "E2 MCP"
@@ -73,7 +78,7 @@
       },
       {
         "command": "e2mcp.openConsole",
-        "title": "Open Virtual Console",
+        "title": "Open Virtual Console Output",
         "category": "E2 MCP"
       }
     ],

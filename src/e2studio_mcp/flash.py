@@ -19,6 +19,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from .config import Config
+from .project import parse_cproject
 
 
 # --- Data models -------------------------------------------------
@@ -199,6 +200,56 @@ def _fallback_launch_config(cfg: Config) -> LaunchConfig:
         gdb_name=fc.gdb_executable,
         port=fc.gdb_port,
     )
+
+
+def _normalize_device_name(device: str) -> str:
+    """Normalize device names for compatibility checks."""
+    return re.sub(r"[^A-Z0-9]", "", device.upper())
+
+
+def _devices_compatible(configured_device: str, project_device: str) -> bool:
+    """Treat package suffixes and markers like _DUAL as compatible variants."""
+    if not configured_device or not project_device:
+        return True
+
+    configured = _normalize_device_name(configured_device)
+    project = _normalize_device_name(project_device)
+    return configured.startswith(project) or project.startswith(configured)
+
+
+def _get_project_device(project_path: Path) -> str:
+    """Read the device declared by the project's .cproject file."""
+    cproject_path = project_path / ".cproject"
+    if not cproject_path.exists():
+        return ""
+
+    try:
+        return parse_cproject(cproject_path).device
+    except Exception:
+        return ""
+
+
+def _resolve_launch_config(
+    cfg: Config,
+    project_path: Path,
+    project_name: str,
+    launch_file: str | None = None,
+) -> tuple[LaunchConfig | None, str | None]:
+    """Resolve launch configuration, rejecting unsafe cross-target fallbacks."""
+    launch_path = find_launch_file(project_path, launch_file)
+    if launch_path:
+        return parse_launch_file(launch_path), None
+
+    project_device = _get_project_device(project_path)
+    if project_device and not _devices_compatible(cfg.flash.device, project_device):
+        return None, (
+            f"No .launch file found for project '{project_name}'. "
+            f"Fallback flash config targets '{cfg.flash.device}', "
+            f"but the project device is '{project_device}'. "
+            "Add/select a project .launch file or update flash.device to match before debug/flash."
+        )
+
+    return _fallback_launch_config(cfg), None
 
 
 # --- RSP (GDB Remote Serial Protocol) client --------------------
@@ -495,11 +546,19 @@ def debug_connect(
     proj_name = project or cfg.default_project
     proj_path = cfg.get_project_path(proj_name)
 
-    launch_path = find_launch_file(proj_path, launch_file)
-    launch_cfg = (
-        parse_launch_file(launch_path) if launch_path
-        else _fallback_launch_config(cfg)
+    launch_cfg, launch_error = _resolve_launch_config(
+        cfg,
+        proj_path,
+        proj_name,
+        launch_file,
     )
+    if launch_error:
+        return {
+            "connected": False,
+            "error": launch_error,
+        }
+
+    assert launch_cfg is not None
     port = launch_cfg.port
 
     # On Windows pass as string for correct argument quoting (matches e2 Studio)
@@ -622,6 +681,8 @@ def flash_firmware(
     project: str | None = None,
     file: str | None = None,
     erase_data_flash: bool = False,
+    build_config: str | None = None,
+    launch_file: str | None = None,
 ) -> dict[str, Any]:
     """Flash firmware (.mot) to target via e2-server-gdb + direct RSP.
 
@@ -630,14 +691,14 @@ def flash_firmware(
     3. Send init commands + M (memory write) packets from parsed .mot
     4. Verify via read-back and disconnect
     """
-    mot_path = _find_firmware_file(cfg, project, file)
+    mot_path = _find_firmware_file(cfg, project, file, build_config)
     if mot_path is None:
         return {
             "success": False,
             "error": "No .mot file found. Build the project first.",
         }
 
-    connect_result = debug_connect(cfg, project=project)
+    connect_result = debug_connect(cfg, project=project, launch_file=launch_file)
     if not connect_result.get("connected"):
         return {
             "success": False,
@@ -691,6 +752,7 @@ def _find_firmware_file(
     cfg: Config,
     project: str | None = None,
     file: str | None = None,
+    build_config: str | None = None,
 ) -> Path | None:
     """Find .mot firmware file to flash."""
     if file:
@@ -699,7 +761,7 @@ def _find_firmware_file(
             return p
 
     proj_path = cfg.get_project_path(project)
-    build_dir = proj_path / cfg.build_config
+    build_dir = proj_path / (build_config or cfg.build_config)
     if build_dir.exists():
         mots = list(build_dir.glob("*.mot"))
         if mots:

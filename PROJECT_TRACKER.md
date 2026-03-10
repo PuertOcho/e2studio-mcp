@@ -26,10 +26,11 @@
 - Estado: `FUNCIONAL`
 - Incluye:
   - Panel lateral `E2 MCP`
-  - Seleccion de proyecto/debugger
+  - Seleccion de proyecto/debugger/buildConfig
+  - Seleccion explicita de `.launch` o modo auto-detect
   - Comandos build/clean/rebuild/flash
   - Integracion con debug `renesas-hardware`
-  - Consola virtual ADM
+  - Consola virtual ADM en `Output` (sin duplicacion en el panel)
 
 ### 1.3 Documentacion
 
@@ -143,6 +144,7 @@ Decisiones confirmadas:
 1. Cerrar cambios de refinamiento sobre `master` y preparar `v0.1.1` si procede.
 2. Evitar artefactos locales en Git (`stderr.txt` y logs similares).
 3. Revisar smoke/integration flows del MCP server y de la extension.
+4. Validar con varios proyectos y varios `.launch` que la seleccion del plugin replica el comportamiento de e2 Studio.
 
 ### P1 - Licenciamiento MVP
 

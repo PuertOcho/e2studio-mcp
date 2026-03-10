@@ -157,7 +157,7 @@ py -3 -m e2studio_mcp
 | Project | `get_project_config(project?, config?)` | Parsea detalles de `.cproject` |
 | Map | `get_map_summary(project?, config?)` | Resumen de secciones + porcentajes |
 | Map | `get_linker_sections(project?, config?)` | Detalle individual de secciones de linker |
-| Flash | `flash_firmware(project?, file?, erase_data_flash?)` | Graba `.mot` por RSP |
+| Flash | `flash_firmware(project?, file?, erase_data_flash?, config?, launch_file?)` | Graba `.mot` por RSP usando la build config y `.launch` seleccionados |
 | Flash | `debug_connect(project?, launch_file?)` | Inicia sesión `e2-server-gdb` |
 | Flash | `debug_disconnect()` | Cierra sesión de depuración |
 | Flash | `debug_status()` | Estado actual de la sesión |
@@ -166,6 +166,23 @@ py -3 -m e2studio_mcp
 ## Extensión VS Code (Opcional)
 
 La carpeta `vscode-extension/` incluye un panel lateral y comandos para selección de proyecto, build, flash y debug.
+
+El flujo previsto en la extensión es:
+
+- seleccionar proyecto detectado automáticamente dentro del workspace e2 Studio
+- seleccionar `buildConfig` real a partir de carpetas de salida con `Makefile`
+- seleccionar `.launch` concreto o dejar `Auto-detect` para priorizar `*HardwareDebug*`
+- lanzar `Build`, `Flash` o `Debug` usando esa selección activa
+
+### Nota sobre Memory
+
+La sección `Memory` del panel no es un mock.
+
+- El uso `ROM/RAM/DataFlash` sale del `.map` real generado por el build.
+- Las capacidades totales salen de `devices` en `e2studio-mcp.json`.
+- Si el dispositivo no está definido ahí, la extensión usa fallback conservador por defecto.
+
+Por tanto, los bytes usados son datos reales del linker; lo que conviene mantener bien configurado es la tabla `devices` para que los porcentajes sean exactos en proyectos nuevos.
 
 ### Compilar la extensión
 

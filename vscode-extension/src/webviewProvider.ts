@@ -15,11 +15,10 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private selectedProject = "";
   private selectedDebugger = "E2LITE";
   private selectedBuildConfig = "HardwareDebug";
+  private selectedLaunchFile = "";
   private memory?: MemoryInfo;
-  private consoleBuffer: string[] = [];
   private busy = false;
   private mcpEnabled = true;
-  private static readonly MAX_CONSOLE_LINES = 500;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -40,12 +39,43 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   get currentProject(): string { return this.selectedProject; }
   get currentBuildConfig(): string { return this.selectedBuildConfig; }
   get currentDebugger(): string { return this.selectedDebugger; }
+  get currentLaunchFile(): string { return this.selectedLaunchFile; }
 
   /** Restore selections from persisted state. */
-  restoreState(project?: string, debugger_?: string, buildConfig?: string): void {
-    if (project && this.projects.find(p => p.name === project)) this.selectedProject = project;
-    if (debugger_) this.selectedDebugger = debugger_;
-    if (buildConfig) this.selectedBuildConfig = buildConfig;
+  restoreState(project?: string, debugger_?: string, buildConfig?: string, launchFile?: string): void {
+    if (project) this.setSelectedProject(project);
+    if (debugger_) this.setSelectedDebugger(debugger_);
+    if (buildConfig) this.setSelectedBuildConfig(buildConfig);
+    if (launchFile) this.setSelectedLaunchFile(launchFile);
+  }
+
+  setSelectedProject(project: string): void {
+    const proj = this.projects.find((p) => p.name === project);
+    if (!proj) return;
+    this.selectedProject = project;
+
+    if (!proj.buildConfigs.includes(this.selectedBuildConfig)) {
+      this.selectedBuildConfig = proj.buildConfigs[0] ?? this.config.buildConfig;
+    }
+    if (this.selectedLaunchFile && !proj.launchFiles.includes(this.selectedLaunchFile)) {
+      this.selectedLaunchFile = "";
+    }
+  }
+
+  setSelectedDebugger(debuggerValue: string): void {
+    this.selectedDebugger = debuggerValue;
+  }
+
+  setSelectedBuildConfig(buildConfig: string): void {
+    this.selectedBuildConfig = buildConfig;
+  }
+
+  setSelectedLaunchFile(launchFile: string): void {
+    const proj = this.projects.find((p) => p.name === this.selectedProject);
+    if (!proj) return;
+    if (launchFile === "" || proj.launchFiles.includes(launchFile)) {
+      this.selectedLaunchFile = launchFile;
+    }
   }
 
   /** Set busy state — disables action buttons in the webview. */
@@ -67,25 +97,29 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((msg) => {
       switch (msg.command) {
         case "selectProject":
-          this.selectedProject = msg.value;
+          this.setSelectedProject(msg.value);
           this.onCommand("selectProject", { project: msg.value });
           this.refreshMemory();
+          this.updateWebview();
           break;
         case "selectDebugger":
-          this.selectedDebugger = msg.value;
+          this.setSelectedDebugger(msg.value);
           this.onCommand("selectDebugger", { debugger: msg.value });
           break;
         case "selectBuildConfig":
-          this.selectedBuildConfig = msg.value;
+          this.setSelectedBuildConfig(msg.value);
           this.onCommand("selectBuildConfig", { config: msg.value });
           this.refreshMemory();
+          break;
+        case "selectLaunchFile":
+          this.setSelectedLaunchFile(msg.value);
+          this.onCommand("selectLaunchFile", { launchFile: msg.value });
           break;
         case "build":
         case "clean":
         case "rebuild":
         case "flash":
         case "debug":
-        case "openConsole":
           this.onCommand(msg.command);
           break;
         case "toggleMcp":
@@ -103,26 +137,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     this.updateWebview();
   }
 
-  /** Called by admConsole to push console output into the webview. */
-  appendConsole(text: string): void {
-    const lines = text.split("\n");
-    for (const line of lines) {
-      if (line.length > 0) {
-        this.consoleBuffer.push(line);
-      }
-    }
-    // Trim buffer
-    while (
-      this.consoleBuffer.length > E2McpViewProvider.MAX_CONSOLE_LINES
-    ) {
-      this.consoleBuffer.shift();
-    }
-    this.view?.webview.postMessage({
-      command: "consoleAppend",
-      text: text,
-    });
-  }
-
   /** Refresh the project list from disk. */
   refreshProjects(): void {
     this.projects = scanProjects(this.config.workspace);
@@ -131,7 +145,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       this.projects.length > 0 &&
       !this.projects.find((p) => p.name === this.selectedProject)
     ) {
-      this.selectedProject = this.projects[0].name;
+      this.setSelectedProject(this.projects[0].name);
     }
   }
 
@@ -139,8 +153,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   refreshMemory(): void {
     const proj = this.projects.find((p) => p.name === this.selectedProject);
     if (proj) {
-      // Look up device capacities from config
-      const deviceKey = this.config.flash.device;
+      const deviceKey = this.resolveDeviceKey(proj);
       const deviceInfo = this.config.devices[deviceKey];
       this.memory = getMemoryInfo(
         proj.path,
@@ -171,6 +184,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private getHtml(): string {
     const proj = this.projects.find((p) => p.name === this.selectedProject);
     const buildConfigs = proj?.buildConfigs ?? ["HardwareDebug"];
+    const launchFiles = proj?.launchFiles ?? [];
 
     const projectRadios = this.projects
       .map(
@@ -208,9 +222,13 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       ? this.renderMemoryBars(this.memory)
       : `<div class="placeholder">Build project to see memory usage</div>`;
 
-    const consoleContent = this.consoleBuffer.length > 0
-      ? this.esc(this.consoleBuffer.join("\n"))
-      : "";
+    const launchFileOptions = [
+      `<option value="" ${this.selectedLaunchFile === "" ? "selected" : ""}>Auto-detect (prefer HardwareDebug)</option>`,
+      ...launchFiles.map(
+        (launchFile) =>
+          `<option value="${this.esc(launchFile)}" ${launchFile === this.selectedLaunchFile ? "selected" : ""}>${this.esc(launchFile)}</option>`
+      ),
+    ].join("\n");
 
     return /*html*/ `<!DOCTYPE html>
 <html lang="en">
@@ -407,27 +425,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-descriptionForeground);
     }
 
-    /* Console */
-    .console-area {
-      background: var(--vscode-terminal-background, var(--vscode-editor-background));
-      color: var(--vscode-terminal-foreground, var(--vscode-editor-foreground));
-      font-family: var(--vscode-editor-font-family, monospace);
-      font-size: var(--vscode-editor-font-size, 12px);
-      padding: 6px 8px;
-      border-radius: 3px;
-      min-height: 80px;
-      max-height: 200px;
-      overflow-y: auto;
-      overflow-x: auto;
-      white-space: pre;
-      border: 1px solid var(--vscode-widget-border, transparent);
-    }
-    .console-area:empty::before {
-      content: "Virtual console output will appear here...";
-      color: var(--vscode-descriptionForeground);
-      font-style: italic;
-    }
-
     .placeholder {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
@@ -559,6 +556,10 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       <label>Build</label>
       <select id="buildConfig">${buildConfigOptions}</select>
     </div>
+    <div class="config-row">
+      <label>Launch</label>
+      <select id="launchFile">${launchFileOptions}</select>
+    </div>
   </div>
 
   <!-- ACTIONS -->
@@ -578,12 +579,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   <details class="section" open>
     <summary><span class="chevron">&#x25B6;</span> Memory</summary>
     <div id="memoryContent">${memoryBars}</div>
-  </details>
-
-  <!-- CONSOLE -->
-  <details class="section" open>
-    <summary><span class="chevron">&#x25B6;</span> Virtual Console</summary>
-    <div class="console-area" id="console">${consoleContent}</div>
   </details>
 
   <script>
@@ -610,17 +605,14 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       postMsg('selectBuildConfig', e.target.value);
     });
 
+    document.getElementById('launchFile')?.addEventListener('change', e => {
+      postMsg('selectLaunchFile', e.target.value);
+    });
+
     // Handle messages from extension
-    const consoleEl = document.getElementById('console');
     window.addEventListener('message', event => {
       const msg = event.data;
       switch (msg.command) {
-        case 'consoleAppend':
-          if (consoleEl) {
-            consoleEl.textContent += msg.text;
-            consoleEl.scrollTop = consoleEl.scrollHeight;
-          }
-          break;
         case 'setMemory':
           // Full re-render handled by extension updating HTML
           break;
@@ -650,11 +642,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 
     // Handle MCP state update from extension
     // (already handled in message listener below via setMcpState)
-
-    // Auto-scroll console to bottom on load
-    if (consoleEl) {
-      consoleEl.scrollTop = consoleEl.scrollHeight;
-    }
   </script>
 </body>
 </html>`;
@@ -699,5 +686,24 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  private resolveDeviceKey(project: ProjectInfo): string {
+    const candidates = [
+      project.deviceCommand,
+      project.deviceName,
+      project.device,
+      this.config.flash.device,
+    ].filter((value): value is string => !!value);
+
+    for (const candidate of candidates) {
+      if (this.config.devices[candidate]) return candidate;
+      const withoutDual = candidate.replace(/_DUAL$/, "");
+      if (this.config.devices[withoutDual]) return withoutDual;
+      const packageMatch = candidate.match(/^([A-Z0-9]+)(Dx[A-Z0-9]+)$/i);
+      if (packageMatch && this.config.devices[packageMatch[1]]) return packageMatch[1];
+    }
+
+    return this.config.flash.device;
   }
 }

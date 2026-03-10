@@ -89,6 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         case "selectDebugger":
           if (args?.debugger) {
+            viewProvider?.setSelectedDebugger(args.debugger);
             const label =
               args.debugger === "E2LITE"
                 ? "E2 Lite"
@@ -110,6 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         case "selectBuildConfig":
           if (args?.config) {
+            viewProvider?.setSelectedBuildConfig(args.config);
             context.workspaceState.update("e2mcp.buildConfig", args.config);
             if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
               disableMcpAndHardware(outputChannel);
@@ -117,6 +119,17 @@ export function activate(context: vscode.ExtensionContext): void {
                 "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
               );
             }
+          }
+          break;
+        case "selectLaunchFile":
+          viewProvider?.setSelectedLaunchFile(args?.launchFile ?? "");
+          statusBar?.setLaunch(args?.launchFile || "Auto Launch");
+          context.workspaceState.update("e2mcp.launchFile", args?.launchFile ?? "");
+          if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+            disableMcpAndHardware(outputChannel);
+            vscode.window.showInformationMessage(
+              "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
+            );
           }
           break;
         case "build":
@@ -158,9 +171,6 @@ export function activate(context: vscode.ExtensionContext): void {
         case "toggleMcp":
           toggleMcpServer(outputChannel);
           break;
-        case "openConsole":
-          admConsole?.startManual();
-          break;
       }
     }
   );
@@ -182,17 +192,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const savedProject = context.workspaceState.get<string>("e2mcp.project");
   const savedDebugger = context.workspaceState.get<string>("e2mcp.debugger");
   const savedBuildConfig = context.workspaceState.get<string>("e2mcp.buildConfig");
-  viewProvider.restoreState(savedProject, savedDebugger, savedBuildConfig);
+  const savedLaunchFile = context.workspaceState.get<string>("e2mcp.launchFile");
+  viewProvider.restoreState(savedProject, savedDebugger, savedBuildConfig, savedLaunchFile);
   if (savedProject) statusBar?.setProject(savedProject);
   if (savedDebugger) {
     const label = savedDebugger === "E2LITE" ? "E2 Lite" : savedDebugger === "JLINK" ? "J-Link" : savedDebugger;
     statusBar?.setDebugger(label);
   }
-
-  // Pipe console output to webview
-  admConsole.onOutput((text) => {
-    viewProvider?.appendConsole(text);
-  });
+  if (savedLaunchFile) {
+    statusBar?.setLaunch(savedLaunchFile);
+  }
 
   // Commands
   context.subscriptions.push(
@@ -210,6 +219,9 @@ export function activate(context: vscode.ExtensionContext): void {
         placeHolder: "Select e2 Studio project",
       });
       if (pick) {
+        viewProvider?.setSelectedProject(pick);
+        viewProvider?.refreshMemory();
+        viewProvider?.updateWebview();
         statusBar?.setProject(pick);
         context.workspaceState.update("e2mcp.project", pick);
         outputChannel.appendLine(`[e2mcp] Project: ${pick}`);
@@ -232,6 +244,8 @@ export function activate(context: vscode.ExtensionContext): void {
           placeHolder: "Select debug probe",
         });
         if (pick) {
+          viewProvider?.setSelectedDebugger(pick.value);
+          viewProvider?.updateWebview();
           statusBar?.setDebugger(pick.label);
           context.workspaceState.update("e2mcp.debugger", pick.value);
           outputChannel.appendLine(
@@ -240,6 +254,28 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       }
     )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2mcp.selectLaunch", async () => {
+      const project = viewProvider?.currentProject;
+      const projectInfo = viewProvider?.projects.find((p) => p.name === project);
+      const launchFiles = projectInfo?.launchFiles ?? [];
+      const picks = [
+        { label: "Auto Launch", value: "" },
+        ...launchFiles.map((launchFile) => ({ label: launchFile, value: launchFile })),
+      ];
+      const pick = await vscode.window.showQuickPick(picks, {
+        placeHolder: "Select .launch file for debug/flash",
+      });
+      if (pick) {
+        viewProvider?.setSelectedLaunchFile(pick.value);
+        viewProvider?.updateWebview();
+        statusBar?.setLaunch(pick.label);
+        context.workspaceState.update("e2mcp.launchFile", pick.value);
+        outputChannel.appendLine(`[e2mcp] Launch file: ${pick.label}`);
+      }
+    })
   );
 
   // Build commands
@@ -279,13 +315,14 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!viewProvider || !flashRunner) return;
       const project = viewProvider.currentProject;
       const buildConfig = viewProvider.currentBuildConfig;
+      const launchFile = viewProvider.currentLaunchFile;
       if (!project) {
         vscode.window.showWarningMessage("No project selected.");
         return;
       }
       viewProvider.setBusy(true);
       try {
-        await flashRunner.flash(project, buildConfig);
+        await flashRunner.flash(project, buildConfig, launchFile || undefined);
       } finally {
         viewProvider.setBusy(false);
       }

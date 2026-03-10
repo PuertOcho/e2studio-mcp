@@ -25,7 +25,7 @@ export class FlashRunner implements vscode.Disposable {
    * Flash firmware for the given project.
    * Uses the Python MCP server's flash_firmware tool via CLI invocation.
    */
-  async flash(project: string, buildConfig: string): Promise<boolean> {
+  async flash(project: string, buildConfig: string, launchFile?: string): Promise<boolean> {
     if (this.flashing) {
       vscode.window.showWarningMessage("Flash already in progress.");
       return false;
@@ -57,7 +57,7 @@ export class FlashRunner implements vscode.Disposable {
       "from e2studio_mcp.config import load_config",
       "from e2studio_mcp.flash import flash_firmware",
       "cfg = load_config()",
-      `result = flash_firmware(cfg, project="${this.escPy(project)}")`,
+      `result = flash_firmware(cfg, project=\"${this.escPy(project)}\", build_config=\"${this.escPy(buildConfig)}\", launch_file=${launchFile ? `\"${this.escPy(launchFile)}\"` : "None"})`,
       "print(json.dumps(result))",
     ].join("; ");
 

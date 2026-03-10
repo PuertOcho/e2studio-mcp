@@ -59,6 +59,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
     const workspace = this.config.workspace;
     const buildConfig = this.viewProvider.currentBuildConfig || this.config.buildConfig;
     const debuggerType = this.viewProvider.currentDebugger || "E2LITE";
+    const launchSelection = this.viewProvider.currentLaunchFile || undefined;
     const flash = this.config.flash;
 
     const projectRoot = path.join(workspace, projectName);
@@ -78,7 +79,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       : "e2-server-gdb.exe";
 
     // Try to parse .launch file for detailed serverParameters and initCommands
-    const launchFile = findLaunchFile(projectRoot);
+    const launchFile = findLaunchFile(projectRoot, launchSelection);
     let serverParameters: Record<string, string | number> = {};
     let initCommands: string[] = [
       "monitor set_internal_mem_overwrite 0-581",
@@ -105,6 +106,9 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       }
       if (parsed.port) {
         port = String(parsed.port);
+      }
+      if (parsed.device) {
+        flash.device = parsed.device;
       }
     }
 

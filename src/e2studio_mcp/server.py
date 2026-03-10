@@ -292,6 +292,8 @@ def flash_firmware(
     project: str = "",
     file: str = "",
     erase_data_flash: bool = False,
+    config: str = "",
+    launch_file: str = "",
 ) -> dict:
     """Flash firmware (.mot) to target via E2 Lite debugger.
 
@@ -303,6 +305,8 @@ def flash_firmware(
         project: Project name (default: headc-fw)
         file: Path to .mot file (default: auto-detect in HardwareDebug/)
         erase_data_flash: Whether to erase data flash before programming
+        config: Build configuration used to locate the firmware file
+        launch_file: Specific .launch file name (default: auto-detect)
 
     Returns:
         Flash result with success, bytesWritten, chunksWritten, verified, durationMs.
@@ -312,6 +316,8 @@ def flash_firmware(
         project=project or None,
         file=file or None,
         erase_data_flash=erase_data_flash,
+        build_config=config or None,
+        launch_file=launch_file or None,
     )
 
 

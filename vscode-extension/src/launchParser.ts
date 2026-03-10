@@ -17,6 +17,19 @@ export interface ParsedLaunchConfig {
   serverParametersMap: Record<string, string | number>;
 }
 
+export function listLaunchFiles(projectPath: string): string[] {
+  if (!fs.existsSync(projectPath)) return [];
+
+  try {
+    return fs
+      .readdirSync(projectPath)
+      .filter((f) => f.endsWith(".launch"))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Parse an e2 Studio .launch XML file to extract debug parameters.
  * Mirrors the Python flash.py parse_launch_file().
@@ -135,20 +148,14 @@ function parseServerParams(params: string): Record<string, string | number> {
  * Find a .launch file in a project directory.
  * Priority: *HardwareDebug* > *NO BORRA* > first found.
  */
-export function findLaunchFile(projectPath: string): string | undefined {
-  if (!fs.existsSync(projectPath)) return undefined;
-
-  let launchFiles: string[];
-  try {
-    launchFiles = fs
-      .readdirSync(projectPath)
-      .filter((f) => f.endsWith(".launch"))
-      .sort();
-  } catch {
-    return undefined;
-  }
+export function findLaunchFile(projectPath: string, preferredLaunchFile?: string): string | undefined {
+  const launchFiles = listLaunchFiles(projectPath);
 
   if (launchFiles.length === 0) return undefined;
+
+  if (preferredLaunchFile && launchFiles.includes(preferredLaunchFile)) {
+    return path.join(projectPath, preferredLaunchFile);
+  }
 
   // Prefer HardwareDebug
   const hwDebug = launchFiles.find((f) => f.includes("HardwareDebug"));
