@@ -9,7 +9,10 @@ import pytest
 
 from e2studio_mcp.flash import (
     LaunchConfig,
+    _decode_monitor_hex_text,
+    _extract_adm_port,
     _parse_mot_file,
+    _prepare_debug_init_commands,
     _rsp_checksum,
     _rsp_extract,
 )
@@ -167,3 +170,47 @@ class TestLaunchConfig:
         assert cfg.device == "R5F565NE"
         assert cfg.port == 12345
         assert len(cfg.init_commands) == 2
+
+
+class TestDebugInitCommands:
+    def test_appends_adm_when_missing(self):
+        cfg = LaunchConfig(
+            init_commands=[
+                "monitor set_internal_mem_overwrite 0-581",
+                "monitor force_rtos_off",
+            ]
+        )
+
+        commands = _prepare_debug_init_commands(cfg)
+
+        assert commands == [
+            "set_internal_mem_overwrite 0-581",
+            "force_rtos_off",
+            "start_interface,ADM,main",
+        ]
+
+    def test_does_not_duplicate_adm(self):
+        cfg = LaunchConfig(
+            init_commands=[
+                "monitor force_rtos_off",
+                "monitor start_interface,ADM,main",
+            ]
+        )
+
+        commands = _prepare_debug_init_commands(cfg)
+
+        assert commands == [
+            "force_rtos_off",
+            "start_interface,ADM,main",
+        ]
+
+
+class TestAdmStartResponse:
+    def test_decode_monitor_hex_text(self):
+        assert _decode_monitor_hex_text("6d61696e2c35333938380a") == "main,53988\n"
+
+    def test_extract_adm_port(self):
+        assert _extract_adm_port("6d61696e2c35333938380a") == 53988
+
+    def test_extract_adm_port_invalid(self):
+        assert _extract_adm_port("OK") is None

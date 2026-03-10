@@ -39,6 +39,7 @@ class LaunchConfig:
 class DebugSession:
     """Tracks a running e2-server-gdb session."""
     server_process: subprocess.Popen | None = None
+    rsp_socket: socket.socket | None = None
     gdb_port: int = 61234
     device: str = ""
     project: str = ""
@@ -203,6 +204,8 @@ def _fallback_launch_config(cfg: Config) -> LaunchConfig:
 # --- RSP (GDB Remote Serial Protocol) client --------------------
 
 _RSP_MAX_DATA = 1024  # Max data bytes per M-packet (hex = 2x this)
+_ADM_START_COMMAND = "start_interface,ADM,main"
+_ADM_START_RESPONSE_RE = re.compile(r"^main,(\d+)\s*$")
 
 
 def _rsp_checksum(data: str) -> int:
@@ -247,6 +250,97 @@ def _rsp_monitor(sock: socket.socket, cmd: str, timeout: float = 5.0) -> str:
     hex_cmd = codecs.encode(cmd.encode("ascii"), "hex").decode("ascii")
     resp = _rsp_send(sock, f"qRcmd,{hex_cmd}", timeout)
     return _rsp_extract(resp)
+
+
+def _prepare_debug_init_commands(launch_cfg: LaunchConfig) -> list[str]:
+    """Return monitor commands needed to initialize a debug session.
+
+    e2 Studio's VS Code flow enables the ADM virtual console explicitly.
+    The .launch files used by this MCP backend do not currently include that
+    command, so append it here when absent.
+    """
+    commands = [
+        cmd.removeprefix("monitor ").strip()
+        for cmd in launch_cfg.init_commands
+        if cmd.strip()
+    ]
+    if _ADM_START_COMMAND not in commands:
+        commands.append(_ADM_START_COMMAND)
+    return commands
+
+
+def _decode_monitor_hex_text(response: str) -> str:
+    """Decode hex-encoded monitor output returned by qRcmd."""
+    if not response:
+        return ""
+    try:
+        return bytes.fromhex(response).decode("utf-8", errors="replace")
+    except ValueError:
+        return response
+
+
+def _extract_adm_port(response: str) -> int | None:
+    """Extract the ADM port from a ``start_interface,ADM,main`` response."""
+    text = _decode_monitor_hex_text(response)
+    match = _ADM_START_RESPONSE_RE.match(text)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _open_rsp_socket(
+    port: int,
+    timeout: float = 10.0,
+    attempts: int = 10,
+    retry_delay: float = 0.5,
+) -> socket.socket:
+    """Open an RSP TCP socket with a short retry window for server startup."""
+    last_error: OSError | None = None
+    for _ in range(max(attempts, 1)):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        try:
+            sock.connect(("localhost", port))
+            try:
+                sock.settimeout(1.0)
+                sock.recv(256)
+            except socket.timeout:
+                pass
+            finally:
+                sock.settimeout(timeout)
+            return sock
+        except OSError as exc:
+            sock.close()
+            last_error = exc
+            time.sleep(retry_delay)
+    if last_error is None:
+        last_error = ConnectionRefusedError(f"Cannot connect to e2-server-gdb on port {port}")
+    raise last_error
+
+
+def _initialize_debug_session(
+    port: int,
+    launch_cfg: LaunchConfig,
+) -> tuple[socket.socket, list[str]]:
+    """Connect to e2-server-gdb, run init commands, and keep the socket alive."""
+    log: list[str] = []
+    sock = _open_rsp_socket(port)
+    try:
+        for cmd in _prepare_debug_init_commands(launch_cfg):
+            result = _rsp_monitor(sock, cmd)
+            log.append(f"monitor {cmd}: {result}")
+    except Exception:
+        sock.close()
+        raise
+    return sock, log
+
+
+def ensure_adm_interface(session: DebugSession) -> int | None:
+    """Ensure the ADM interface is open for the active debug session."""
+    if session.rsp_socket is None:
+        return None
+    response = _rsp_monitor(session.rsp_socket, _ADM_START_COMMAND)
+    return _extract_adm_port(response)
 
 
 def _parse_mot_file(mot_path: Path) -> list[tuple[int, bytes]]:
@@ -444,6 +538,21 @@ def debug_connect(
             launch_cfg=launch_cfg,
         )
 
+        try:
+            rsp_socket, init_log = _initialize_debug_session(port, launch_cfg)
+            _session.rsp_socket = rsp_socket
+        except Exception as e:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                pass
+            _session = None
+            return {
+                "connected": False,
+                "error": f"Failed to initialize debug session: {e}",
+            }
+
         return {
             "connected": True,
             "port": port,
@@ -451,6 +560,7 @@ def debug_connect(
             "project": proj_name,
             "pid": proc.pid,
             "launchFile": launch_cfg.source_file or None,
+            "initLog": init_log,
         }
 
     except Exception as e:
@@ -465,10 +575,20 @@ def debug_disconnect(cfg: Config) -> dict[str, Any]:
     global _session
 
     if _session is None or not _session.server_running:
+        if _session and _session.rsp_socket:
+            try:
+                _session.rsp_socket.close()
+            except OSError:
+                pass
         _session = None
         return {"disconnected": True, "message": "No active session"}
 
     try:
+        if _session.rsp_socket:
+            try:
+                _session.rsp_socket.close()
+            except OSError:
+                pass
         _session.server_process.terminate()
         _session.server_process.wait(timeout=5)
     except subprocess.TimeoutExpired:
@@ -530,17 +650,13 @@ def flash_firmware(
 
     t0 = time.monotonic()
     sock = None
+    uses_session_socket = False
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10.0)
-        sock.connect(("localhost", port))
-
-        # Consume any initial banner / ack bytes from server
-        try:
-            sock.settimeout(1.0)
-            sock.recv(256)
-        except socket.timeout:
-            pass
+        if _session and _session.rsp_socket is not None:
+            sock = _session.rsp_socket
+            uses_session_socket = True
+        else:
+            sock = _open_rsp_socket(port)
 
         result = _flash_via_rsp(sock, mot_path, init_commands, erase_data_flash)
         result["durationMs"] = int((time.monotonic() - t0) * 1000)
@@ -563,7 +679,7 @@ def flash_firmware(
     except Exception as e:
         return {"success": False, "error": f"Flash failed: {e}"}
     finally:
-        if sock:
+        if sock and not uses_session_socket:
             try:
                 sock.close()
             except OSError:

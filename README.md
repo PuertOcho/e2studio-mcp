@@ -33,8 +33,10 @@ Toolchain Renesas + hardware objetivo (E2 Lite / E1 / E2 / J-Link)
 - Análisis de memoria: `get_build_size`, `get_map_summary`, `get_linker_sections`
 - Metadatos de proyecto: `list_projects`, `get_project_config`
 - Flash/debug: `flash_firmware`, `debug_connect`, `debug_disconnect`, `debug_status`
+- Consola ADM: `get_adm_log`
 - Recursos MCP:
   - `e2studio://build/log`
+  - `e2studio://debug/adm/log`
   - `e2studio://project/memory`
   - `e2studio://project/config`
 
@@ -56,6 +58,7 @@ e2studio-mcp/
     project.py         # Parsing de .cproject y discovery de proyectos
     mapfile.py         # Parsing de .map y resúmenes de memoria
     flash.py           # Sesión e2-server-gdb y grabación por RSP
+    adm.py             # Cliente ADM / consola virtual SimulatedIO
     config.py          # Carga de configuración JSON
   tests/               # Tests unitarios + smoke test
   scripts/             # Utilidades de soporte
@@ -101,8 +104,20 @@ El servidor resuelve la configuración en este orden:
   "flash": {
     "debugger": "E2Lite",
     "device": "R5F5651E",
+    "gdbExecutable": "rx-elf-gdb",
     "gdbPort": 61234,
-    "debugToolsPath": "C:/Users/anton/.eclipse/com.renesas.platform_xxx/DebugComp/RX"
+    "inputClock": "24.0",
+    "idCode": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+    "debugToolsPath": "C:/Users/.../.eclipse/com.renesas.platform_xxx/DebugComp/RX",
+    "python3BinPath": "C:/Renesas/e2_studio/eclipse/plugins/.../bin"
+  },
+  "devices": {
+    "R5F5651E": {
+      "family": "RX651",
+      "romSize": 2097152,
+      "ramSize": 655360,
+      "dataFlashSize": 32768
+    }
   }
 }
 ```
@@ -111,7 +126,9 @@ Notas:
 
 - `buildMode` soporta `make` o `e2studioc`.
 - `buildJobs: 0` activa autodetección por núcleos lógicos, con tope de `16` para parecerse al comportamiento de e2 Studio.
-- Las capacidades en `devices` se usan para porcentajes ROM/RAM/DataFlash.
+- `devices` define capacidades por dispositivo; se usan para calcular porcentajes ROM/RAM/DataFlash.
+- `gdbExecutable` es el binario GDB (default: `rx-elf-gdb`; se busca en PATH o en rutas de toolchain).
+- `python3BinPath` apunta al Python embebido de Renesas, requerido por `e2-server-gdb`.
 - Si no se define `debugToolsPath`, se intentan rutas de autodetección conocidas.
 
 ## Ejecución del Servidor MCP
@@ -144,6 +161,7 @@ py -3 -m e2studio_mcp
 | Flash | `debug_connect(project?, launch_file?)` | Inicia sesión `e2-server-gdb` |
 | Flash | `debug_disconnect()` | Cierra sesión de depuración |
 | Flash | `debug_status()` | Estado actual de la sesión |
+| Debug | `get_adm_log(port?, wait_seconds?, duration_ms?, poll_ms?, max_bytes?)` | Lee un snapshot del buffer ADM / consola virtual |
 
 ## Extensión VS Code (Opcional)
 

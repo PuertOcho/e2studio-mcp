@@ -13,6 +13,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from .config import load_config, Config
+from . import adm as adm_mod
 from . import build as build_mod
 from . import project as project_mod
 from . import mapfile as mapfile_mod
@@ -357,6 +358,51 @@ def debug_status() -> dict:
     return flash_mod.debug_status(cfg)
 
 
+@mcp.tool()
+def get_adm_log(
+    port: int = 0,
+    wait_seconds: int = 5,
+    duration_ms: int = 1000,
+    poll_ms: int = 250,
+    max_bytes: int = 8192,
+) -> dict:
+    """Capture a snapshot of the ADM virtual console output.
+
+    Reads the target's SimulatedIO/ADM buffer exposed by e2-server-gdb.
+    If there is an active MCP-managed debug session, it reuses that PID to
+    locate the ADM port. Otherwise it auto-detects any running e2-server-gdb.
+
+    Args:
+        port: Explicit ADM port (default: auto-detect)
+        wait_seconds: Time to wait for ADM port detection (default: 5)
+        duration_ms: How long to poll for new output (default: 1000)
+        poll_ms: Poll interval in milliseconds (default: 250)
+        max_bytes: Maximum bytes to return before truncating (default: 8192)
+
+    Returns:
+        Snapshot with text, port, bytesRead, durationMs, and truncation state.
+    """
+    session = getattr(flash_mod, "_session", None)
+    session_pid = None
+    gdb_port = cfg.flash.gdb_port
+    resolved_port = port or None
+    if session and session.server_running and session.server_process:
+        session_pid = session.server_process.pid
+        gdb_port = session.gdb_port
+        if resolved_port is None:
+            resolved_port = flash_mod.ensure_adm_interface(session)
+
+    return adm_mod.read_adm_log(
+        port=resolved_port,
+        pid=session_pid,
+        wait_seconds=wait_seconds,
+        duration_ms=duration_ms,
+        poll_ms=poll_ms,
+        max_bytes=max_bytes,
+        gdb_port=gdb_port,
+    )
+
+
 # ═══════════════════════════════════════════════════════════════
 # MCP RESOURCES
 # ═══════════════════════════════════════════════════════════════
@@ -372,6 +418,35 @@ def resource_build_log() -> str:
     if result is None:
         return "No build has been run yet."
     return result.output
+
+
+@mcp.resource("e2studio://debug/adm/log")
+def resource_debug_adm_log() -> str:
+    """Current ADM virtual console snapshot.
+
+    Returns a short text snapshot from the active Renesas virtual console.
+    """
+    snapshot = get_adm_log(wait_seconds=2, duration_ms=750, poll_ms=250, max_bytes=8192)
+    if not snapshot.get("success"):
+        return f"ADM log unavailable: {snapshot.get('error', 'Unknown error')}"
+
+    text = str(snapshot.get("text", ""))
+    if not text:
+        return (
+            f"No ADM output captured on port {snapshot.get('port')} "
+            f"after {snapshot.get('durationMs')} ms."
+        )
+
+    lines = [
+        f"ADM port: {snapshot.get('port')}",
+        f"Bytes: {snapshot.get('bytesRead')}",
+        f"Duration: {snapshot.get('durationMs')} ms",
+        "",
+        text,
+    ]
+    if snapshot.get("truncated"):
+        lines.insert(3, "Output truncated to max_bytes.")
+    return "\n".join(lines)
 
 
 @mcp.resource("e2studio://project/memory")
