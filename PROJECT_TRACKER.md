@@ -3,7 +3,7 @@
 - Proyecto: `e2Studio_2024_workspace/e2studio-mcp`
 - Stack: Python (`mcp`) + VS Code Extension (TypeScript)
 - Ultima actualizacion: 2026-03-10
-- Estado global: `MVP funcional` + `preparacion go-to-market`
+- Estado global: `MVP funcional` tagged como `v0.1.0` + fase de refinamiento/estabilizacion
 
 ## 1. Estado Tecnico
 
@@ -35,7 +35,14 @@
 
 - Estado: `ACTUALIZADO` (revisado 2026-03-10)
 - README profesional publicado en `README.md`.
+- CHANGELOG inicial creado en `CHANGELOG.md`.
 - Estructura, ejemplo de config y notas sincronizados con código real.
+
+## 1.4 Hito de Release
+
+- Tag Git creado: `v0.1.0`
+- Significado: baseline funcional del MVP para seguir refinando sin perder un punto estable de referencia
+- Siguiente objetivo: endurecer packaging/documentacion y preparar cambios incrementales sobre la base `0.1.x`
 
 ## 2. Ultimas Decisiones (2026-03-06)
 
@@ -127,9 +134,15 @@ Decisiones confirmadas:
 ### P0 - Publicacion Marketplace
 
 1. Completar metadata de `vscode-extension/package.json`.
-2. Crear `CHANGELOG.md` y assets de marketplace.
+2. Completar assets de marketplace.
 3. Crear publisher y PAT.
-4. Publicar `v0.1.0`.
+4. Publicar en Marketplace tomando `v0.1.0` como baseline tecnico.
+
+### P0.1 - Estabilizacion post-MVP
+
+1. Cerrar cambios de refinamiento sobre `master` y preparar `v0.1.1` si procede.
+2. Evitar artefactos locales en Git (`stderr.txt` y logs similares).
+3. Revisar smoke/integration flows del MCP server y de la extension.
 
 ### P1 - Licenciamiento MVP
 
