@@ -2,8 +2,8 @@
 
 - Proyecto: `e2Studio_2024_workspace/e2studio-mcp`
 - Stack: Python (`mcp`) + VS Code Extension (TypeScript)
-- Ultima actualizacion: 2026-03-10
-- Estado global: `MVP funcional` tagged como `v0.1.0` + fase de refinamiento/estabilizacion
+- Ultima actualizacion: 2026-03-11
+- Estado global: `MVP funcional` tagged como `v0.1.0` + fase activa de estabilizacion funcional/UX
 
 ## 1. Estado Tecnico
 
@@ -43,7 +43,14 @@
 
 - Tag Git creado: `v0.1.0`
 - Significado: baseline funcional del MVP para seguir refinando sin perder un punto estable de referencia
-- Siguiente objetivo: endurecer packaging/documentacion y preparar cambios incrementales sobre la base `0.1.x`
+- Siguiente objetivo: cerrar requisitos de estabilizacion funcional y preparar cambios incrementales sobre la base `0.1.x`
+
+## 1.5 Foco Actual de Estabilizacion (2026-03-11)
+
+- Estado: `EN DEFINICION`
+- Objetivo: convertir bugs de flujo/UX observados en requisitos verificables antes de implementar.
+- Documento de trabajo asociado: `STABILIZATION_REQUIREMENTS.md`.
+- Principio acordado: no fijar comportamiento como definitivo cuando todavia hay dudas funcionales o tecnicas.
 
 ## 2. Ultimas Decisiones (2026-03-06)
 
@@ -71,6 +78,24 @@ Decisiones confirmadas:
 3. Monetizacion de sostenibilidad: `upgrade de major version` (ej. v1 perpetua, upgrade opcional a v2).
 4. Marketplace no cobra licencias directamente: la venta debe hacerse fuera.
 5. Checkout recomendado: `Lemon Squeezy` o `Paddle` (VAT UE/facturacion/fraude).
+
+## 2.3 Requisitos Abiertos de Estabilizacion (2026-03-11)
+
+Pendientes incorporados al backlog documental antes de implementacion:
+
+1. Cerrar semantica final de `Toggle MCP OFF` respecto al estado UI cuando la liberacion real del hardware falle.
+2. Definir ciclo de vida visible de la seccion `Memory` y su relacion con `build`, `clean` y `debug`.
+3. Cerrar si `Debug` debe auto-build siempre o solo cuando falten/invaliden artefactos.
+4. Evaluar deteccion de e2 Studio abierto y concretar el alcance exacto de la confirmacion previa.
+5. Garantizar que errores de `Build`, `Flash` o `Debug` no dejen la UI en estado bloqueado/cargando indefinidamente.
+
+## 2.4 Decisiones Confirmadas de Estabilizacion (2026-03-11)
+
+1. `MCP OFF` debe liberar siempre el hardware aunque implique cerrar sesiones de debug abiertas por la extension.
+2. `Debug` debe lanzar build automatica antes de depurar; si falla, debe avisar y no continuar.
+3. La seccion `Memory` debe mostrarse en el panel, incluso vacia, con estados visibles.
+4. Si se detecta e2 Studio abierto, debe pedirse confirmacion antes de continuar.
+5. El alcance inicial recomendado para esa deteccion es `proceso abierto`, tratado como señal `best effort`.
 
 ## 3. Arquitectura de Licenciamiento Aprobada
 
@@ -137,7 +162,8 @@ Decisiones confirmadas:
 1. Completar metadata de `vscode-extension/package.json`.
 2. Completar assets de marketplace.
 3. Crear publisher y PAT.
-4. Publicar en Marketplace tomando `v0.1.0` como baseline tecnico.
+4. Definir estrategia de licencia de uso y encaje legal/comercial antes de publicar.
+5. Publicar en Marketplace tomando `v0.1.0` como baseline tecnico cuando el esquema de licencia este cerrado.
 
 ### P0.1 - Estabilizacion post-MVP
 
@@ -145,6 +171,11 @@ Decisiones confirmadas:
 2. Evitar artefactos locales en Git (`stderr.txt` y logs similares).
 3. Revisar smoke/integration flows del MCP server y de la extension.
 4. Validar con varios proyectos y varios `.launch` que la seleccion del plugin replica el comportamiento de e2 Studio.
+5. Cerrar especificacion funcional de `Toggle MCP OFF` y su efecto real sobre sesion debug/hardware.
+6. Cerrar especificacion UX/datos de la seccion `Memory`.
+7. Cerrar politica de `Debug sin build previa`.
+8. Confirmar estrategia de deteccion/aviso cuando e2 Studio este abierto.
+9. Corregir el contrato de UI para que cualquier error cierre spinner y re-habilite acciones.
 
 ### P1 - Licenciamiento MVP
 
@@ -163,4 +194,6 @@ Decisiones confirmadas:
 
 1. `GO_TO_MARKET_CHECKLIST.md` con pasos operativos de publicacion.
 2. `LICENSING_TECH_SPEC.md` con flujo tecnico detallado (trial/activacion/cache/revalidacion).
-3. Implementacion de comandos UI: `Activar licencia`, `Ver estado de licencia`, `Comprar`.
+3. `STABILIZATION_REQUIREMENTS.md` con bugs, criterios de aceptacion y preguntas abiertas de UX/flujo.
+4. Definicion del modelo de licencia de uso para extension/publicacion.
+5. Implementacion de comandos UI: `Activar licencia`, `Ver estado de licencia`, `Comprar`.

@@ -167,6 +167,8 @@ py -3 -m e2studio_mcp
 
 La carpeta `vscode-extension/` incluye un panel lateral y comandos para selección de proyecto, build, flash y debug.
 
+Los requisitos funcionales abiertos de estabilización se consolidan en `STABILIZATION_REQUIREMENTS.md` para separar comportamiento actual de decisiones aún no cerradas.
+
 El flujo previsto en la extensión es:
 
 - seleccionar proyecto detectado automáticamente dentro del workspace e2 Studio
