@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { ADMConsole } from "./admConsole";
-import { StatusBar } from "./statusBar";
 import { loadConfig, ExtensionConfig } from "./config";
 import { E2McpViewProvider } from "./webviewProvider";
 import { BuildRunner } from "./buildRunner";
@@ -10,7 +9,6 @@ import { FlashRunner } from "./flashRunner";
 import { DebugProvider } from "./debugProvider";
 
 let admConsole: ADMConsole | undefined;
-let statusBar: StatusBar | undefined;
 let config: ExtensionConfig | undefined;
 let viewProvider: E2McpViewProvider | undefined;
 let buildRunner: BuildRunner | undefined;
@@ -52,10 +50,6 @@ export function activate(context: vscode.ExtensionContext): void {
     };
   }
 
-  // Status bar
-  statusBar = new StatusBar(config);
-  context.subscriptions.push(statusBar);
-
   // ADM Virtual Console
   admConsole = new ADMConsole(context);
   context.subscriptions.push(admConsole);
@@ -74,7 +68,6 @@ export function activate(context: vscode.ExtensionContext): void {
       switch (cmd) {
         case "selectProject":
           if (args?.project) {
-            statusBar?.setProject(args.project);
             context.workspaceState.update("e2mcp.project", args.project);
             outputChannel.appendLine(
               `[e2mcp] Project: ${args.project}`
@@ -96,7 +89,6 @@ export function activate(context: vscode.ExtensionContext): void {
                 : args.debugger === "JLINK"
                   ? "J-Link"
                   : args.debugger;
-            statusBar?.setDebugger(label);
             context.workspaceState.update("e2mcp.debugger", args.debugger);
             outputChannel.appendLine(
               `[e2mcp] Debugger: ${label}`
@@ -123,7 +115,6 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         case "selectLaunchFile":
           viewProvider?.setSelectedLaunchFile(args?.launchFile ?? "");
-          statusBar?.setLaunch(args?.launchFile || "Auto Launch");
           context.workspaceState.update("e2mcp.launchFile", args?.launchFile ?? "");
           if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
             disableMcpAndHardware(outputChannel);
@@ -168,6 +159,17 @@ export function activate(context: vscode.ExtensionContext): void {
           }
           break;
         }
+        case "stopDebug": {
+          const session = vscode.debug.activeDebugSession;
+          if (session?.type === "renesas-hardware") {
+            vscode.debug.stopDebugging(session);
+          } else {
+            vscode.window.showInformationMessage(
+              "No active Renesas debug session to stop."
+            );
+          }
+          break;
+        }
         case "toggleMcp":
           toggleMcpServer(outputChannel);
           break;
@@ -194,14 +196,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const savedBuildConfig = context.workspaceState.get<string>("e2mcp.buildConfig");
   const savedLaunchFile = context.workspaceState.get<string>("e2mcp.launchFile");
   viewProvider.restoreState(savedProject, savedDebugger, savedBuildConfig, savedLaunchFile);
-  if (savedProject) statusBar?.setProject(savedProject);
-  if (savedDebugger) {
-    const label = savedDebugger === "E2LITE" ? "E2 Lite" : savedDebugger === "JLINK" ? "J-Link" : savedDebugger;
-    statusBar?.setDebugger(label);
-  }
-  if (savedLaunchFile) {
-    statusBar?.setLaunch(savedLaunchFile);
-  }
+  viewProvider.setDebugActive(
+    vscode.debug.activeDebugSession?.type === "renesas-hardware"
+  );
 
   // Commands
   context.subscriptions.push(
@@ -222,7 +219,6 @@ export function activate(context: vscode.ExtensionContext): void {
         viewProvider?.setSelectedProject(pick);
         viewProvider?.refreshMemory();
         viewProvider?.updateWebview();
-        statusBar?.setProject(pick);
         context.workspaceState.update("e2mcp.project", pick);
         outputChannel.appendLine(`[e2mcp] Project: ${pick}`);
       }
@@ -246,7 +242,6 @@ export function activate(context: vscode.ExtensionContext): void {
         if (pick) {
           viewProvider?.setSelectedDebugger(pick.value);
           viewProvider?.updateWebview();
-          statusBar?.setDebugger(pick.label);
           context.workspaceState.update("e2mcp.debugger", pick.value);
           outputChannel.appendLine(
             `[e2mcp] Debugger: ${pick.label} (${pick.value})`
@@ -271,7 +266,6 @@ export function activate(context: vscode.ExtensionContext): void {
       if (pick) {
         viewProvider?.setSelectedLaunchFile(pick.value);
         viewProvider?.updateWebview();
-        statusBar?.setLaunch(pick.label);
         context.workspaceState.update("e2mcp.launchFile", pick.value);
         outputChannel.appendLine(`[e2mcp] Launch file: ${pick.label}`);
       }
@@ -329,6 +323,19 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2mcp.stopDebug", () => {
+      const session = vscode.debug.activeDebugSession;
+      if (session?.type === "renesas-hardware") {
+        vscode.debug.stopDebugging(session);
+        return;
+      }
+      vscode.window.showInformationMessage(
+        "No active Renesas debug session to stop."
+      );
+    })
+  );
+
   // Auto-start console on Renesas debug session
   context.subscriptions.push(
     vscode.debug.onDidStartDebugSession((session) => {
@@ -337,6 +344,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `[e2mcp] Debug session started: ${session.name}`
         );
         viewProvider?.setBusy(false);
+        viewProvider?.setDebugActive(true);
         admConsole?.startOnDebug();
       }
     })
@@ -349,6 +357,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `[e2mcp] Debug session ended: ${session.name}`
         );
         viewProvider?.setBusy(false);
+        viewProvider?.setDebugActive(false);
         admConsole?.stop();
       }
     })

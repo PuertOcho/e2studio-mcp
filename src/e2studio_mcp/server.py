@@ -392,11 +392,14 @@ def get_adm_log(
     session_pid = None
     gdb_port = cfg.flash.gdb_port
     resolved_port = port or None
-    if session and session.server_running and session.server_process:
-        session_pid = session.server_process.pid
+    if session and session.server_running:
         gdb_port = session.gdb_port
-        if resolved_port is None:
-            resolved_port = flash_mod.ensure_adm_interface(session)
+        if session.server_process:
+            session_pid = session.server_process.pid
+            if resolved_port is None:
+                resolved_port = flash_mod.ensure_adm_interface(session)
+        elif session.external_pid:
+            session_pid = session.external_pid
 
     return adm_mod.read_adm_log(
         port=resolved_port,

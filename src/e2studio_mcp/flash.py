@@ -46,9 +46,19 @@ class DebugSession:
     project: str = ""
     connected: bool = False
     launch_cfg: LaunchConfig | None = None
+    external: bool = False
+    external_pid: int | None = None
 
     @property
     def server_running(self) -> bool:
+        if self.external:
+            if self.external_pid is None:
+                return False
+            try:
+                os.kill(self.external_pid, 0)
+                return True
+            except OSError:
+                return False
         if self.server_process is None:
             return False
         return self.server_process.poll() is None
@@ -630,11 +640,25 @@ def debug_connect(
 
 
 def debug_disconnect(cfg: Config) -> dict[str, Any]:
-    """Stop e2-server-gdb session."""
+    """Stop e2-server-gdb session (or detach from external session)."""
     global _session
 
-    if _session is None or not _session.server_running:
-        if _session and _session.rsp_socket:
+    if _session is None:
+        return {"disconnected": True, "message": "No active session"}
+
+    if _session.external:
+        result = {
+            "disconnected": True,
+            "message": "External session detached (not terminated — started by IDE)",
+            "device": _session.device,
+            "port": _session.gdb_port,
+            "pid": _session.external_pid,
+        }
+        _session = None
+        return result
+
+    if not _session.server_running:
+        if _session.rsp_socket:
             try:
                 _session.rsp_socket.close()
             except OSError:
@@ -660,18 +684,96 @@ def debug_disconnect(cfg: Config) -> dict[str, Any]:
     return result
 
 
-def debug_status(cfg: Config) -> dict[str, Any]:
-    """Check status of debug session."""
-    if _session is None:
-        return {"serverRunning": False, "gdbConnected": False}
+def _get_process_cmdline(pid: int) -> str:
+    """Get the command line string for a Windows process by PID."""
+    try:
+        result = subprocess.run(
+            ["wmic", "process", "where", f"processid={pid}",
+             "get", "commandline", "/value"],
+            capture_output=True, text=True, errors="ignore",
+            check=False, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("CommandLine="):
+                return line[len("CommandLine="):]
+    except Exception:
+        pass
+    return ""
 
-    return {
-        "serverRunning": _session.server_running,
-        "gdbConnected": _session.connected,
-        "device": _session.device,
-        "port": _session.gdb_port,
-        "project": _session.project,
-    }
+
+def _detect_external_session() -> DebugSession | None:
+    """Detect an e2-server-gdb session started outside the MCP (e.g. by e2 Studio IDE)."""
+    from . import adm as _adm_module
+
+    pids = _adm_module.find_e2_server_pids()
+    if not pids:
+        return None
+
+    pid = pids[0]
+    cmdline = _get_process_cmdline(pid)
+
+    device = ""
+    gdb_port = 61234
+
+    if cmdline:
+        m = re.search(r"-t\s+(\S+)", cmdline)
+        if m:
+            device = m.group(1)
+        m = re.search(r"-p\s+(\d+)", cmdline)
+        if m:
+            gdb_port = int(m.group(1))
+
+    return DebugSession(
+        gdb_port=gdb_port,
+        device=device,
+        connected=True,
+        external=True,
+        external_pid=pid,
+    )
+
+
+def debug_status(cfg: Config) -> dict[str, Any]:
+    """Check status of debug session (MCP-managed or external)."""
+    global _session
+
+    # If we have a session, verify it's still alive
+    if _session is not None:
+        if _session.server_running:
+            return {
+                "serverRunning": True,
+                "gdbConnected": _session.connected,
+                "device": _session.device,
+                "port": _session.gdb_port,
+                "project": _session.project,
+                "external": _session.external,
+                "pid": _session.external_pid or (
+                    _session.server_process.pid
+                    if _session.server_process else None
+                ),
+            }
+        # Stale session — clean up
+        if _session.rsp_socket:
+            try:
+                _session.rsp_socket.close()
+            except OSError:
+                pass
+        _session = None
+
+    # No active MCP session — try to detect external
+    external = _detect_external_session()
+    if external is not None:
+        _session = external
+        return {
+            "serverRunning": True,
+            "gdbConnected": True,
+            "device": external.device,
+            "port": external.gdb_port,
+            "external": True,
+            "pid": external.external_pid,
+        }
+
+    return {"serverRunning": False, "gdbConnected": False}
 
 
 # --- Flash firmware ----------------------------------------------

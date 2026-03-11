@@ -19,6 +19,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private memory?: MemoryInfo;
   private busy = false;
   private mcpEnabled = true;
+  private debugActive = false;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -84,6 +85,11 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({ command: "setBusy", busy });
   }
 
+  setDebugActive(debugActive: boolean): void {
+    this.debugActive = debugActive;
+    this.view?.webview.postMessage({ command: "setDebugState", debugActive });
+  }
+
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
 
@@ -120,6 +126,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case "rebuild":
         case "flash":
         case "debug":
+        case "stopDebug":
           this.onCommand(msg.command);
           break;
         case "toggleMcp":
@@ -570,7 +577,8 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       <button class="action-btn secondary" onclick="postMsg('clean')">Clean</button>
       <button class="action-btn secondary" onclick="postMsg('rebuild')">Rebuild</button>
       <button class="action-btn" onclick="postMsg('flash')">Flash</button>
-      <button class="action-btn" onclick="postMsg('debug')">&#x25B6; Debug</button>
+      <button id="debugBtn" class="action-btn" onclick="postMsg('debug')" ${this.debugActive ? "disabled" : ""}>&#x25B6; Debug</button>
+      <button id="stopBtn" class="action-btn secondary" onclick="postMsg('stopDebug')" ${this.debugActive ? "" : "disabled"}>&#x25A0; Stop</button>
     </div>
     <div id="loading-bar" class="loading-bar"></div>
   </div>
@@ -583,9 +591,22 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 
   <script>
     const vscode = acquireVsCodeApi();
+    let debugActive = ${this.debugActive ? "true" : "false"};
 
     function postMsg(command, value) {
       vscode.postMessage({ command, value });
+    }
+
+    function setButtonState(button, disabled) {
+      if (!button) return;
+      button.disabled = disabled;
+      button.style.opacity = disabled ? '0.5' : '1';
+      button.style.pointerEvents = disabled ? 'none' : 'auto';
+    }
+
+    function syncDebugButtons() {
+      setButtonState(document.getElementById('debugBtn'), debugActive);
+      setButtonState(document.getElementById('stopBtn'), !debugActive);
     }
 
     // Project radio buttons
@@ -623,8 +644,14 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
             btn.style.opacity = msg.busy ? '0.5' : '1';
             btn.style.pointerEvents = msg.busy ? 'none' : 'auto';
           });
+          if (!msg.busy) syncDebugButtons();
           const loading = document.getElementById('loading-bar');
           if (loading) loading.style.display = msg.busy ? 'block' : 'none';
+          break;
+        }
+        case 'setDebugState': {
+          debugActive = !!msg.debugActive;
+          syncDebugButtons();
           break;
         }
         case 'setMcpState': {
@@ -639,6 +666,8 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     document.getElementById('mcpToggle')?.addEventListener('change', () => {
       postMsg('toggleMcp');
     });
+
+    syncDebugButtons();
 
     // Handle MCP state update from extension
     // (already handled in message listener below via setMcpState)

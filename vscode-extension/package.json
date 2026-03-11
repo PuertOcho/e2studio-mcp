@@ -80,6 +80,11 @@
         "command": "e2mcp.openConsole",
         "title": "Open Virtual Console Output",
         "category": "E2 MCP"
+      },
+      {
+        "command": "e2mcp.stopDebug",
+        "title": "Stop Debug Session",
+        "category": "E2 MCP"
       }
     ],
     "configuration": {
