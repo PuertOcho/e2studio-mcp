@@ -19,6 +19,7 @@ from e2studio_mcp.flash import (
     _resolve_launch_config,
     _rsp_checksum,
     _rsp_extract,
+    parse_launch_file,
 )
 
 
@@ -163,6 +164,8 @@ class TestLaunchConfig:
         assert cfg.device == ""
         assert cfg.port == 61234
         assert cfg.init_commands == []
+        assert cfg.run_commands == []
+        assert cfg.auto_resume is False
         assert cfg.gdb_name == "rx-elf-gdb"
 
     def test_custom(self):
@@ -174,6 +177,53 @@ class TestLaunchConfig:
         assert cfg.device == "R5F565NE"
         assert cfg.port == 12345
         assert len(cfg.init_commands) == 2
+
+    def test_auto_resume_fields(self):
+        cfg = LaunchConfig(
+            auto_resume=True,
+            run_commands=["continue"],
+        )
+        assert cfg.auto_resume is True
+        assert cfg.run_commands == ["continue"]
+
+
+class TestParseLaunchFile:
+    def test_parses_run_commands_and_resume(self, tmp_path: Path):
+        """parse_launch_file should read runCommands and setResume."""
+        launch_xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="UTF-8"?>
+            <launchConfiguration>
+                <stringAttribute key="com.renesas.cdt.core.targetDevice" value="R5F572NN_DUAL"/>
+                <stringAttribute key="com.renesas.cdt.core.portNumber" value="61234"/>
+                <stringAttribute key="com.renesas.cdt.core.optionInitCommands" value="monitor force_rtos_off&#10;"/>
+                <stringAttribute key="com.renesas.cdt.core.runCommands" value="continue&#10;"/>
+                <booleanAttribute key="org.eclipse.cdt.debug.gdbjtag.core.setResume" value="true"/>
+            </launchConfiguration>
+        """)
+        launch_file = tmp_path / "test.launch"
+        launch_file.write_text(launch_xml, encoding="utf-8")
+
+        cfg = parse_launch_file(launch_file)
+
+        assert cfg.device == "R5F572NN_DUAL"
+        assert cfg.run_commands == ["continue"]
+        assert cfg.auto_resume is True
+
+    def test_auto_resume_false_by_default(self, tmp_path: Path):
+        """When setResume is absent, auto_resume should be False."""
+        launch_xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="UTF-8"?>
+            <launchConfiguration>
+                <stringAttribute key="com.renesas.cdt.core.targetDevice" value="R5F5651E"/>
+            </launchConfiguration>
+        """)
+        launch_file = tmp_path / "test.launch"
+        launch_file.write_text(launch_xml, encoding="utf-8")
+
+        cfg = parse_launch_file(launch_file)
+
+        assert cfg.auto_resume is False
+        assert cfg.run_commands == []
 
 
 class TestLaunchResolution:

@@ -3,6 +3,18 @@ import * as path from "path";
 import { spawn } from "child_process";
 import { ExtensionConfig } from "./config";
 
+export interface FlashResult {
+  success: boolean;
+  error?: string;
+  durationMs?: number;
+  bytesWritten?: number;
+  verified?: boolean;
+  running?: boolean;
+  device?: string;
+  project?: string;
+  flashedFile?: string;
+}
+
 /**
  * Flash firmware to target via the Python MCP flash module.
  *
@@ -25,16 +37,23 @@ export class FlashRunner implements vscode.Disposable {
    * Flash firmware for the given project.
    * Uses the Python MCP server's flash_firmware tool via CLI invocation.
    */
-  async flash(project: string, buildConfig: string, launchFile?: string): Promise<boolean> {
+  async flash(
+    project: string,
+    buildConfig: string,
+    launchFile?: string,
+    options?: { runAfterFlash?: boolean }
+  ): Promise<FlashResult> {
     if (this.flashing) {
       vscode.window.showWarningMessage("Flash already in progress.");
-      return false;
+      return { success: false, error: "Flash already in progress." };
     }
+
+    const runAfterFlash = options?.runAfterFlash ?? false;
 
     this.flashing = true;
     this.flashChannel.show(true);
     this.flashChannel.appendLine(
-      `[flash] Flashing ${project}/${buildConfig}...`
+      `[flash] ${runAfterFlash ? "Flash+Run" : "Flash"} ${project}/${buildConfig}...`
     );
 
     const pythonPath = vscode.workspace
@@ -48,7 +67,7 @@ export class FlashRunner implements vscode.Disposable {
         "[flash] ERROR: e2studio_mcp source not found."
       );
       this.flashing = false;
-      return false;
+      return { success: false, error: "e2studio_mcp source not found." };
     }
 
     // Invoke Python: py -c "from e2studio_mcp.flash import flash_firmware; ..."
@@ -57,7 +76,7 @@ export class FlashRunner implements vscode.Disposable {
       "from e2studio_mcp.config import load_config",
       "from e2studio_mcp.flash import flash_firmware",
       "cfg = load_config()",
-      `result = flash_firmware(cfg, project=\"${this.escPy(project)}\", build_config=\"${this.escPy(buildConfig)}\", launch_file=${launchFile ? `\"${this.escPy(launchFile)}\"` : "None"})`,
+      `result = flash_firmware(cfg, project=\"${this.escPy(project)}\", build_config=\"${this.escPy(buildConfig)}\", launch_file=${launchFile ? `\"${this.escPy(launchFile)}\"` : "None"}, run_after_flash=${runAfterFlash ? "True" : "False"})`,
       "print(json.dumps(result))",
     ].join("; ");
 
@@ -89,26 +108,47 @@ export class FlashRunner implements vscode.Disposable {
 
       proc.on("exit", (code) => {
         this.flashing = false;
-        if (code === 0) {
-          this.flashChannel.appendLine("\n[flash] ✓ Flash complete.");
-          resolve(true);
-        } else {
-          this.flashChannel.appendLine(
-            `\n[flash] ✗ Flash failed (exit code ${code}).`
-          );
-          if (stderr.trim()) {
-            this.flashChannel.appendLine(`[flash] ${stderr.trim()}`);
-          }
-          resolve(false);
+        const result = this.parseResult(stdout);
+
+        if (code === 0 && result?.success) {
+          const verb = runAfterFlash ? "Flash+Run" : "Flash";
+          const summary = [
+            `${result.bytesWritten ?? 0} bytes`,
+            `verified=${result.verified ? "true" : "false"}`,
+            runAfterFlash ? `running=${result.running ? "true" : "false"}` : undefined,
+          ].filter(Boolean).join(", ");
+          this.flashChannel.appendLine(`\n[flash] ✓ ${verb} complete. ${summary}`);
+          resolve(result);
+          return;
         }
+
+        const error = result?.error || stderr.trim() || `Flash failed (exit code ${code}).`;
+        this.flashChannel.appendLine(`\n[flash] ✗ ${error}`);
+        resolve(result ?? { success: false, error });
       });
 
       proc.on("error", (err) => {
         this.flashing = false;
         this.flashChannel.appendLine(`[flash] Process error: ${err.message}`);
-        resolve(false);
+        resolve({ success: false, error: err.message });
       });
     });
+  }
+
+  private parseResult(stdout: string): FlashResult | undefined {
+    const lines = stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      try {
+        return JSON.parse(lines[index]) as FlashResult;
+      } catch {
+        // Keep scanning backwards until we find the JSON result line.
+      }
+    }
+    return undefined;
   }
 
   private findMcpSrc(): string | undefined {

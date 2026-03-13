@@ -6,8 +6,9 @@ Usage:
 
 from __future__ import annotations
 
-import json
-import sys
+import time
+from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -17,7 +18,7 @@ from . import adm as adm_mod
 from . import build as build_mod
 from . import project as project_mod
 from . import mapfile as mapfile_mod
-from . import flash as flash_mod
+from . import bridge as bridge_mod
 
 # ─── Bootstrap ────────────────────────────────────────────────
 
@@ -31,6 +32,39 @@ mcp = FastMCP(
         f"for workspace: {cfg.workspace}"
     ),
 )
+
+
+# ─── Activity Log ─────────────────────────────────────────────
+
+@dataclass
+class ActivityEntry:
+    """One logged MCP operation."""
+    timestamp: str
+    tool: str
+    args: dict
+    ok: bool
+    summary: str
+    duration_ms: int = 0
+
+
+_activity_log: deque[ActivityEntry] = deque(maxlen=200)
+
+
+def _log_activity(
+    tool: str,
+    args: dict,
+    ok: bool,
+    summary: str,
+    duration_ms: int = 0,
+) -> None:
+    _activity_log.append(ActivityEntry(
+        timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
+        tool=tool,
+        args=args,
+        ok=ok,
+        summary=summary,
+        duration_ms=duration_ms,
+    ))
 
 
 # ─── Helpers ──────────────────────────────────────────────────
@@ -70,13 +104,63 @@ def _resolve_device_capacities(proj_path: Path) -> tuple[int, int, int]:
 # BUILD TOOLS
 # ═══════════════════════════════════════════════════════════════
 
+def _build_via_bridge_or_standalone(
+    command: str,
+    project: str,
+    config: str,
+    mode: str,
+) -> dict:
+    """Try the VS Code extension bridge first, fall back to standalone make."""
+    t0 = time.monotonic()
+
+    # Try bridge (extension UI buttons)
+    bridge_result = bridge_mod.call_bridge(
+        cfg.workspace_path,
+        command,
+        {"project": project or cfg.default_project, "config": config or cfg.build_config},
+    )
+    if bridge_result is not None:
+        ms = int((time.monotonic() - t0) * 1000)
+        bridge_result["via"] = "extension"
+        _log_activity(
+            command,
+            {"project": project or cfg.default_project, "config": config or cfg.build_config},
+            bridge_result.get("success", False),
+            f"via extension bridge, {bridge_result.get('errors', 0)} errors",
+            ms,
+        )
+        return bridge_result
+
+    # Fallback to standalone Python
+    if command == "rebuild":
+        result = build_mod.rebuild_project(cfg, project=project or None, config=config or None, mode=mode or None)
+    elif command == "clean":
+        result = build_mod.clean_project(cfg, project=project or None, config=config or None, mode=mode or None)
+    else:
+        result = build_mod.build_project(cfg, project=project or None, config=config or None, mode=mode or None)
+
+    ms = int((time.monotonic() - t0) * 1000)
+    result["via"] = "standalone"
+    _log_activity(
+        command,
+        {"project": project or cfg.default_project, "config": config or cfg.build_config},
+        result.get("success", False),
+        f"standalone, {result.get('totalErrors', 0)} errors",
+        ms,
+    )
+    return result
+
+
 @mcp.tool()
 def build_project(
     project: str = "",
     config: str = "",
     mode: str = "",
 ) -> dict:
-    """Build an e2 Studio project using make or e2studioc.
+    """Build an e2 Studio project.
+
+    Routes through the VS Code extension when available (same as clicking
+    the Build button), otherwise falls back to spawning make directly.
 
     Args:
         project: Project name (default: headc-fw)
@@ -84,14 +168,9 @@ def build_project(
         mode: Build backend - "make" or "e2studioc" (default: from config)
 
     Returns:
-        Build result with success status, errors, warnings, duration, and output file path.
+        Build result with success status, errors, warnings.
     """
-    return build_mod.build_project(
-        cfg,
-        project=project or None,
-        config=config or None,
-        mode=mode or None,
-    )
+    return _build_via_bridge_or_standalone("build", project, config, mode)
 
 
 @mcp.tool()
@@ -102,20 +181,18 @@ def clean_project(
 ) -> dict:
     """Clean build artifacts for an e2 Studio project.
 
+    Routes through the VS Code extension when available, otherwise
+    falls back to spawning make directly.
+
     Args:
         project: Project name (default: headc-fw)
         config: Build configuration (default: HardwareDebug)
         mode: Build backend - "make" or "e2studioc" (default: from config)
 
     Returns:
-        Clean result with success status and output.
+        Clean result with success status.
     """
-    return build_mod.clean_project(
-        cfg,
-        project=project or None,
-        config=config or None,
-        mode=mode or None,
-    )
+    return _build_via_bridge_or_standalone("clean", project, config, mode)
 
 
 @mcp.tool()
@@ -126,6 +203,9 @@ def rebuild_project(
 ) -> dict:
     """Clean and rebuild an e2 Studio project (clean + build).
 
+    Routes through the VS Code extension when available, otherwise
+    falls back to spawning make directly.
+
     Args:
         project: Project name (default: headc-fw)
         config: Build configuration (default: HardwareDebug)
@@ -134,12 +214,7 @@ def rebuild_project(
     Returns:
         Combined clean + build result.
     """
-    return build_mod.rebuild_project(
-        cfg,
-        project=project or None,
-        config=config or None,
-        mode=mode or None,
-    )
+    return _build_via_bridge_or_standalone("rebuild", project, config, mode)
 
 
 @mcp.tool()
@@ -288,80 +363,65 @@ def get_linker_sections(project: str = "", config: str = "") -> list[dict]:
 # ═══════════════════════════════════════════════════════════════
 
 @mcp.tool()
-def flash_firmware(
-    project: str = "",
-    file: str = "",
-    erase_data_flash: bool = False,
-    config: str = "",
-    launch_file: str = "",
-) -> dict:
-    """Flash firmware (.mot) to target via E2 Lite debugger.
+def debug_start(project: str = "") -> dict:
+    """Start a debug session (build + flash + debug).
 
-    Starts e2-server-gdb, connects via direct RSP (GDB Remote Serial Protocol),
-    writes flash memory using M-packets from the parsed .mot S-Record file,
-    verifies via read-back, and disconnects.
+    Routes through the VS Code extension's debug adapter, which handles
+    e2-server-gdb, flash programming, and GDB session setup — the same
+    flow as clicking the Debug button in the sidebar.
 
     Args:
-        project: Project name (default: headc-fw)
-        file: Path to .mot file (default: auto-detect in HardwareDebug/)
-        erase_data_flash: Whether to erase data flash before programming
-        config: Build configuration used to locate the firmware file
-        launch_file: Specific .launch file name (default: auto-detect)
+        project: Project name (default: from extension selection)
 
     Returns:
-        Flash result with success, bytesWritten, chunksWritten, verified, durationMs.
+        Result with success status.
     """
-    return flash_mod.flash_firmware(
-        cfg,
-        project=project or None,
-        file=file or None,
-        erase_data_flash=erase_data_flash,
-        build_config=config or None,
-        launch_file=launch_file or None,
+    t0 = time.monotonic()
+    args = {}
+    if project:
+        args["project"] = project
+    result = bridge_mod.call_bridge(
+        cfg.workspace_path, "debug",
+        args,
+        timeout=120,
     )
+    ms = int((time.monotonic() - t0) * 1000)
+    if result is None:
+        _log_activity("debug_start", {"project": project}, False, "bridge unavailable", ms)
+        return {"error": "Extension bridge not available. Open VS Code with the e2mcp extension."}
+    _log_activity("debug_start", {"project": project}, result.get("success", False), "via extension", ms)
+    return result
 
 
 @mcp.tool()
-def debug_connect(project: str = "", launch_file: str = "") -> dict:
-    """Start e2-server-gdb and prepare for debugging/flashing.
+def debug_stop() -> dict:
+    """Stop the active debug session.
 
-    Parses the project's .launch file for device-specific parameters.
-    The server stays running until debug_disconnect is called.
-
-    Args:
-        project: Project name (default: headc-fw). Determines .launch file and device config.
-        launch_file: Specific .launch file name (default: auto-detect *HardwareDebug*)
+    Stops the Renesas hardware debug session through the VS Code extension.
 
     Returns:
-        Connection status with port, device, project, and server PID.
+        Result with success status.
     """
-    return flash_mod.debug_connect(
-        cfg, project=project or None, launch_file=launch_file or None,
-    )
-
-
-@mcp.tool()
-def debug_disconnect() -> dict:
-    """Stop the e2-server-gdb debug session.
-
-    Terminates the GDB server process started by debug_connect.
-
-    Returns:
-        Disconnection confirmation.
-    """
-    return flash_mod.debug_disconnect(cfg)
+    result = bridge_mod.call_bridge(cfg.workspace_path, "stopDebug", timeout=10)
+    if result is None:
+        return {"error": "Extension bridge not available."}
+    _log_activity("debug_stop", {}, result.get("success", False), "via extension")
+    return result
 
 
 @mcp.tool()
 def debug_status() -> dict:
-    """Check the status of the E2 Lite debug session.
+    """Check whether a debug session is currently active.
 
-    Reports whether e2-server-gdb is running and connected.
+    Queries the VS Code extension for the current debug session state.
 
     Returns:
-        Debug session status with server/GDB state, device, and port.
+        Debug session status (active, session name).
     """
-    return flash_mod.debug_status(cfg)
+    result = bridge_mod.call_bridge(cfg.workspace_path, "debugStatus", timeout=5)
+    if result is None:
+        return {"active": False, "error": "Extension bridge not available."}
+    return result
 
 
 @mcp.tool()
@@ -375,8 +435,7 @@ def get_adm_log(
     """Capture a snapshot of the ADM virtual console output.
 
     Reads the target's SimulatedIO/ADM buffer exposed by e2-server-gdb.
-    If there is an active MCP-managed debug session, it reuses that PID to
-    locate the ADM port. Otherwise it auto-detects any running e2-server-gdb.
+    Auto-detects any running e2-server-gdb to find the ADM port.
 
     Args:
         port: Explicit ADM port (default: auto-detect)
@@ -388,27 +447,20 @@ def get_adm_log(
     Returns:
         Snapshot with text, port, bytesRead, durationMs, and truncation state.
     """
-    session = getattr(flash_mod, "_session", None)
-    session_pid = None
-    gdb_port = cfg.flash.gdb_port
-    resolved_port = port or None
-    if session and session.server_running:
-        gdb_port = session.gdb_port
-        if session.server_process:
-            session_pid = session.server_process.pid
-            if resolved_port is None:
-                resolved_port = flash_mod.ensure_adm_interface(session)
-        elif session.external_pid:
-            session_pid = session.external_pid
-
+    # Try bridge first — the extension's ADMConsole already holds the TCP
+    # connection and accumulates output in a ring buffer.
+    result = bridge_mod.call_bridge(cfg.workspace_path, "getAdmLog", timeout=5)
+    if result and result.get("success") and result.get("text"):
+        return result
+    # Fallback to direct TCP connection
     return adm_mod.read_adm_log(
-        port=resolved_port,
-        pid=session_pid,
+        port=port or None,
+        pid=None,
         wait_seconds=wait_seconds,
         duration_ms=duration_ms,
         poll_ms=poll_ms,
         max_bytes=max_bytes,
-        gdb_port=gdb_port,
+        gdb_port=cfg.flash.gdb_port,
     )
 
 
@@ -519,6 +571,28 @@ def resource_project_config() -> str:
         for d in result["defines"]:
             lines.append(f"  {d}")
 
+    return "\n".join(lines)
+
+
+@mcp.resource("e2studio://activity/log")
+def resource_activity_log() -> str:
+    """Recent MCP operations history.
+
+    Shows the last operations with timestamps, tool names, parameters,
+    success/failure status, and duration. Useful for diagnosing issues
+    and understanding what the MCP server has been doing.
+    """
+    if not _activity_log:
+        return "No operations recorded yet."
+
+    lines: list[str] = []
+    for entry in reversed(_activity_log):
+        status = "OK" if entry.ok else "FAIL"
+        dur = f" ({entry.duration_ms}ms)" if entry.duration_ms else ""
+        args_str = ", ".join(f"{k}={v}" for k, v in entry.args.items() if v) if entry.args else ""
+        lines.append(
+            f"[{entry.timestamp}] {entry.tool}({args_str}) -> {status}{dur}: {entry.summary}"
+        )
     return "\n".join(lines)
 
 

@@ -34,7 +34,7 @@ def adm_parse_response(raw: str) -> tuple[str | None, str | None]:
     """Parse an ADM response and return ``(function_name, params)``."""
     data = raw.lstrip("+")
     match = re.match(
-        r"^\$([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)(?:,([^#]*?))?#([0-9a-fA-F]{2})$",
+        r"^\$([a-zA-Z0-9_.]+):([a-zA-Z0-9_]+)(?:,([^#]*?))?#([0-9a-fA-F]{2})$",
         data,
     )
     if not match:
@@ -60,6 +60,10 @@ class ADMClient:
         self.sock.connect((self.host, self.port))
 
     def close(self) -> None:
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         self.sock.close()
 
     def send_and_receive(self, message: str, timeout: float = 2.0) -> str:

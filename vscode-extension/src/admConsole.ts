@@ -15,12 +15,24 @@ export class ADMConsole implements vscode.Disposable {
   private context: vscode.ExtensionContext;
   private starting = false;
   private outputListeners: Array<(text: string) => void> = [];
+  private logBuffer = "";
+  private static readonly MAX_LOG_BYTES = 64 * 1024;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
     this.channel = vscode.window.createOutputChannel(
       "Renesas Virtual Console"
     );
+  }
+
+  /** Get the accumulated console log (ring buffer, last 64KB). */
+  getLog(): string {
+    return this.logBuffer;
+  }
+
+  /** Whether the ADM console process is alive. */
+  get isRunning(): boolean {
+    return !!this.proc;
   }
 
   /** Register a listener that receives console output (used by webview). */
@@ -117,6 +129,10 @@ export class ADMConsole implements vscode.Disposable {
     this.proc.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf-8");
       this.channel.append(text);
+      this.logBuffer += text;
+      if (this.logBuffer.length > ADMConsole.MAX_LOG_BYTES) {
+        this.logBuffer = this.logBuffer.slice(-ADMConsole.MAX_LOG_BYTES);
+      }
       for (const listener of this.outputListeners) {
         listener(text);
       }

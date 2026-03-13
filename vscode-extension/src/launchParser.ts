@@ -88,8 +88,9 @@ export function parseLaunchFile(launchPath: string): ParsedLaunchConfig {
       const n = parseInt(value, 10);
       if (!isNaN(n)) cfg.port = n;
     } else if (key === "com.renesas.cdt.core.optionInitCommands") {
-      // &#10; is decoded to \n by parser
-      cfg.initCommands = value
+      // Decode XML numeric character references that fast-xml-parser may leave
+      const decoded = value.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+      cfg.initCommands = decoded
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -146,7 +147,7 @@ function parseServerParams(params: string): Record<string, string | number> {
 
 /**
  * Find a .launch file in a project directory.
- * Priority: *HardwareDebug* > *NO BORRA* > first found.
+ * Priority: preferredLaunchFile > *HardwareDebug* > *MCP* > *NO BORRA* > first found.
  */
 export function findLaunchFile(projectPath: string, preferredLaunchFile?: string): string | undefined {
   const launchFiles = listLaunchFiles(projectPath);
@@ -161,7 +162,34 @@ export function findLaunchFile(projectPath: string, preferredLaunchFile?: string
   const hwDebug = launchFiles.find((f) => f.includes("HardwareDebug"));
   if (hwDebug) return path.join(projectPath, hwDebug);
 
+  const mcpLaunch = launchFiles.find((f) => f.includes("MCP"));
+  if (mcpLaunch) return path.join(projectPath, mcpLaunch);
+
   // Then NO BORRA
+  const noBorra = launchFiles.find((f) => f.includes("NO BORRA"));
+  if (noBorra) return path.join(projectPath, noBorra);
+
+  return path.join(projectPath, launchFiles[0]);
+}
+
+/**
+ * Find a run-oriented .launch file in a project directory.
+ * Priority: preferredLaunchFile > *MCP* > *HardwareDebug* > *NO BORRA* > first found.
+ */
+export function findRunLaunchFile(projectPath: string, preferredLaunchFile?: string): string | undefined {
+  const launchFiles = listLaunchFiles(projectPath);
+  if (launchFiles.length === 0) return undefined;
+
+  if (preferredLaunchFile && launchFiles.includes(preferredLaunchFile)) {
+    return path.join(projectPath, preferredLaunchFile);
+  }
+
+  const mcpLaunch = launchFiles.find((f) => f.includes("MCP"));
+  if (mcpLaunch) return path.join(projectPath, mcpLaunch);
+
+  const hwDebug = launchFiles.find((f) => f.includes("HardwareDebug"));
+  if (hwDebug) return path.join(projectPath, hwDebug);
+
   const noBorra = launchFiles.find((f) => f.includes("NO BORRA"));
   if (noBorra) return path.join(projectPath, noBorra);
 

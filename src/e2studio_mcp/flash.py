@@ -33,6 +33,8 @@ class LaunchConfig:
     gdb_flags: str = ""
     port: int = 61234
     init_commands: list[str] = field(default_factory=list)
+    run_commands: list[str] = field(default_factory=list)
+    auto_resume: bool = False
     source_file: str = ""
 
 
@@ -48,6 +50,7 @@ class DebugSession:
     launch_cfg: LaunchConfig | None = None
     external: bool = False
     external_pid: int | None = None
+    _log_files: list = field(default_factory=list)  # file handles to close
 
     @property
     def server_running(self) -> bool:
@@ -96,6 +99,11 @@ def parse_launch_file(launch_path: Path) -> LaunchConfig:
             parts = value.split(maxsplit=1)
             cfg.gdb_name = parts[0] if parts else "rx-elf-gdb"
             cfg.gdb_flags = parts[1] if len(parts) > 1 else ""
+        elif key == "com.renesas.cdt.core.runCommands":
+            cmds = [c.strip() for c in value.split("\n") if c.strip()]
+            cfg.run_commands = cmds
+        elif key == "org.eclipse.cdt.debug.gdbjtag.core.setResume":
+            cfg.auto_resume = value.lower() == "true"
 
     if not cfg.device and cfg.server_params:
         m = re.search(r"-t\s+(\S+)", cfg.server_params)
@@ -110,7 +118,7 @@ def find_launch_file(
 ) -> Path | None:
     """Find a .launch file in a project directory.
 
-    Priority: prefer_name > *HardwareDebug* > *NO BORRA* > first found.
+    Priority: prefer_name > *HardwareDebug* > *MCP* > *NO BORRA* > first found.
     """
     launch_files = sorted(project_path.glob("*.launch"))
     if not launch_files:
@@ -120,6 +128,41 @@ def find_launch_file(
         for f in launch_files:
             if f.name == prefer_name:
                 return f
+
+    for f in launch_files:
+        if "HardwareDebug" in f.name:
+            return f
+
+    for f in launch_files:
+        if "MCP" in f.name:
+            return f
+
+    for f in launch_files:
+        if "NO BORRA" in f.name:
+            return f
+
+    return launch_files[0]
+
+
+def find_run_launch_file(
+    project_path: Path, prefer_name: str | None = None,
+) -> Path | None:
+    """Find a .launch file optimized for run-after-flash workflows.
+
+    Priority: prefer_name > *MCP* > *HardwareDebug* > *NO BORRA* > first found.
+    """
+    launch_files = sorted(project_path.glob("*.launch"))
+    if not launch_files:
+        return None
+
+    if prefer_name:
+        for f in launch_files:
+            if f.name == prefer_name:
+                return f
+
+    for f in launch_files:
+        if "MCP" in f.name:
+            return f
 
     for f in launch_files:
         if "HardwareDebug" in f.name:
@@ -244,9 +287,14 @@ def _resolve_launch_config(
     project_path: Path,
     project_name: str,
     launch_file: str | None = None,
+    prefer_run_launch: bool = False,
 ) -> tuple[LaunchConfig | None, str | None]:
     """Resolve launch configuration, rejecting unsafe cross-target fallbacks."""
-    launch_path = find_launch_file(project_path, launch_file)
+    launch_path = (
+        find_run_launch_file(project_path, launch_file)
+        if prefer_run_launch else
+        find_launch_file(project_path, launch_file)
+    )
     if launch_path:
         return parse_launch_file(launch_path), None
 
@@ -352,8 +400,8 @@ def _extract_adm_port(response: str) -> int | None:
 def _open_rsp_socket(
     port: int,
     timeout: float = 10.0,
-    attempts: int = 10,
-    retry_delay: float = 0.5,
+    attempts: int = 15,
+    retry_delay: float = 1.0,
 ) -> socket.socket:
     """Open an RSP TCP socket with a short retry window for server startup."""
     last_error: OSError | None = None
@@ -379,17 +427,63 @@ def _open_rsp_socket(
     raise last_error
 
 
+def _rsp_continue(sock: socket.socket) -> str:
+    """Send GDB continue (``c``) and return whatever comes back quickly.
+
+    The target starts running; the stop-reply arrives only when it halts
+    again (breakpoint, watchdog, etc.), so we use a short timeout and
+    accept an empty/partial response as normal.
+    """
+    packet = f"$c#{_rsp_checksum('c'):02x}"
+    sock.sendall(packet.encode("ascii"))
+    sock.settimeout(0.5)
+    buf = b""
+    try:
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            buf += chunk
+    except socket.timeout:
+        pass
+    return buf.decode("ascii", errors="replace")
+
+
+def _rsp_query_state(sock: socket.socket) -> str:
+    """Query current stop state using RSP ``?``.
+
+    Returns the extracted stop reply, or an empty string if the target appears
+    to still be running and the server does not answer quickly.
+    """
+    return _rsp_extract(_rsp_send(sock, "?", timeout=0.5))
+
+
 def _initialize_debug_session(
     port: int,
     launch_cfg: LaunchConfig,
 ) -> tuple[socket.socket, list[str]]:
-    """Connect to e2-server-gdb, run init commands, and keep the socket alive."""
+    """Connect to e2-server-gdb, run init commands, and keep the socket alive.
+
+    If the .launch file requests auto-resume (``setResume=true`` or
+    ``runCommands`` contains ``continue``), the target is continued
+    automatically so it starts executing firmware immediately.
+    """
     log: list[str] = []
     sock = _open_rsp_socket(port)
     try:
         for cmd in _prepare_debug_init_commands(launch_cfg):
             result = _rsp_monitor(sock, cmd)
             log.append(f"monitor {cmd}: {result}")
+
+        # Auto-resume: honour .launch setResume / runCommands
+        should_resume = launch_cfg.auto_resume or any(
+            c.strip() == "continue" for c in launch_cfg.run_commands
+        )
+        if should_resume:
+            reset_reply = _rsp_monitor(sock, "reset")
+            log.append(f"monitor reset: {reset_reply}")
+            _rsp_continue(sock)
+            log.append("continue: target resumed")
     except Exception:
         sock.close()
         raise
@@ -449,10 +543,12 @@ def _flash_via_rsp(
     mot_path: Path,
     init_commands: list[str],
     erase_data_flash: bool = False,
+    run_after: bool = False,
 ) -> dict[str, Any]:
     """Flash firmware via direct RSP protocol over TCP to e2-server-gdb.
 
     Sequence: NoAckMode → init commands → reset → M-packet writes → verify.
+    If *run_after*, appends: reset → continue (same socket, same NoAckMode).
     """
     log: list[str] = []
 
@@ -510,8 +606,22 @@ def _flash_via_rsp(
     if verify_ok:
         log.append("Verification OK (first + last chunk)")
 
-    return {
-        "success": errors == 0 and verify_ok,
+    flash_ok = errors == 0 and verify_ok
+
+    # 7. Optional: reset + continue to start firmware execution
+    running = False
+    if run_after and flash_ok:
+        try:
+            reset_reply = _rsp_monitor(sock, "reset")
+            log.append(f"monitor reset (run): {reset_reply}")
+            cont_reply = _rsp_continue(sock)
+            log.append(f"continue: sent (reply={cont_reply[:60]!r})")
+            running = True
+        except Exception as exc:
+            log.append(f"run_after failed: {exc}")
+
+    result = {
+        "success": flash_ok,
         "chunksWritten": len(records) - errors,
         "chunksTotal": len(records),
         "bytesWritten": written,
@@ -520,6 +630,139 @@ def _flash_via_rsp(
         "verified": verify_ok,
         "log": log,
     }
+    if run_after:
+        result["running"] = running
+    return result
+
+
+def _flash_and_run(
+    cfg: Config,
+    mot_path: Path,
+    project: str | None,
+    launch_file: str | None,
+    erase_data_flash: bool,
+) -> dict[str, Any]:
+    """Flash + run in a single e2-server-gdb session (no intermediate disconnect).
+
+    Starts the server, opens a fresh RSP socket, flashes via M-packets,
+    then does reset + continue — all on the same connection.
+    The debug session is kept alive so caller can use debug_disconnect later.
+    """
+    global _session
+
+    if _session and _session.server_running:
+        return {
+            "success": False,
+            "error": (
+                "An active debug session already exists. "
+                "Call debug_disconnect before flash_firmware(run_after_flash=true)."
+            ),
+            "project": _session.project,
+            "port": _session.gdb_port,
+        }
+
+    tools_dir = _get_debug_tools_dir(cfg)
+    if tools_dir is None:
+        return {"success": False, "error": "Cannot find e2-server-gdb."}
+
+    server_exe = tools_dir / "e2-server-gdb.exe"
+    proj_name = project or cfg.default_project
+    proj_path = cfg.get_project_path(proj_name)
+
+    launch_cfg, launch_error = _resolve_launch_config(
+        cfg, proj_path, proj_name, launch_file, prefer_run_launch=True,
+    )
+    if launch_error:
+        return {"success": False, "error": launch_error}
+
+    assert launch_cfg is not None
+    port = launch_cfg.port
+    init_commands = launch_cfg.init_commands or []
+    cmd_str = f'"{server_exe}" {launch_cfg.server_params} -p {port}'
+
+    import tempfile
+    _srv_log_dir = Path(tempfile.gettempdir())
+    _srv_stdout = _srv_log_dir / "e2studio_mcp_server_stdout.txt"
+    _srv_stderr = _srv_log_dir / "e2studio_mcp_server_stderr.txt"
+
+    t0 = time.monotonic()
+    proc: subprocess.Popen | None = None
+    sock: socket.socket | None = None
+    fout = None
+    ferr = None
+    try:
+        fout = open(_srv_stdout, "w")
+        ferr = open(_srv_stderr, "w")
+        fout.write(f"CMD: {cmd_str}\nDEVICE: {launch_cfg.device}\n")
+        fout.flush()
+
+        clean_env = {k: v for k, v in os.environ.items()
+                     if not k.startswith(("ELECTRON_", "VSCODE_", "NODE_"))}
+        proc = subprocess.Popen(
+            cmd_str, stdout=fout, stderr=ferr,
+            cwd=str(tools_dir), env=clean_env,
+        )
+        time.sleep(5)
+
+        if proc.poll() is not None:
+            fout.close(); ferr.close()
+            output = _srv_stdout.read_text(errors="replace")
+            output += _srv_stderr.read_text(errors="replace")
+            return {
+                "success": False,
+                "error": f"e2-server-gdb exited (rc={proc.returncode})",
+                "output": output.strip()[-1500:],
+            }
+
+        # Single fresh socket: flash + run (no double-init)
+        sock = _open_rsp_socket(port)
+        result = _flash_via_rsp(sock, mot_path, init_commands, erase_data_flash,
+                                run_after=True)
+        result["durationMs"] = int((time.monotonic() - t0) * 1000)
+        result["device"] = launch_cfg.device
+        result["project"] = proj_name
+
+        # Keep session alive for ADM / debug_disconnect
+        _session = DebugSession(
+            server_process=proc,
+            rsp_socket=sock,
+            gdb_port=port,
+            device=launch_cfg.device,
+            project=proj_name,
+            connected=True,
+            launch_cfg=launch_cfg,
+            _log_files=[fout, ferr],
+        )
+        return result
+
+    except Exception as e:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        for log_file in (fout, ferr):
+            if log_file is None:
+                continue
+            try:
+                log_file.close()
+            except Exception:
+                pass
+        _session = None
+        return {
+            "success": False,
+            "durationMs": int((time.monotonic() - t0) * 1000),
+            "error": f"Flash+run failed: {e}",
+        }
 
 
 # --- Debug session management ------------------------------------
@@ -574,24 +817,45 @@ def debug_connect(
     # On Windows pass as string for correct argument quoting (matches e2 Studio)
     cmd_str = f'"{server_exe}" {launch_cfg.server_params} -p {port}'
 
+    # Redirect server output to temp files instead of PIPE to prevent
+    # potential deadlocks with long-running processes on Windows.
+    import tempfile
+    _srv_log_dir = Path(tempfile.gettempdir())
+    _srv_stdout = _srv_log_dir / "e2studio_mcp_server_stdout.txt"
+    _srv_stderr = _srv_log_dir / "e2studio_mcp_server_stderr.txt"
+
     try:
+        fout = open(_srv_stdout, "w")
+        ferr = open(_srv_stderr, "w")
+        # Write launch diagnostics so we can compare with manual test
+        fout.write(f"CMD: {cmd_str}\n")
+        fout.write(f"CWD: {tools_dir}\n")
+        fout.write(f"SERVER_EXISTS: {server_exe.exists()}\n")
+        fout.write(f"PROJECT: {proj_name}\n")
+        fout.write(f"PROJ_PATH: {proj_path}\n")
+        fout.write(f"LAUNCH_SRC: {launch_cfg.source_file}\n")
+        fout.write(f"DEVICE: {launch_cfg.device}\n")
+        fout.flush()
+
+        # Build clean env: inherit current but strip Electron/Node vars
+        # that may interfere with native GUI processes like e2-server-gdb
+        clean_env = {k: v for k, v in os.environ.items()
+                     if not k.startswith(("ELECTRON_", "VSCODE_", "NODE_"))}
         proc = subprocess.Popen(
             cmd_str,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=fout,
+            stderr=ferr,
             cwd=str(tools_dir),  # needed for rxv2v3-regset
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            env=clean_env,
         )
 
-        time.sleep(3)
+        time.sleep(5)
 
         if proc.poll() is not None:
-            stdout = (
-                proc.stdout.read().decode(errors="replace") if proc.stdout else ""
-            )
-            stderr = (
-                proc.stderr.read().decode(errors="replace") if proc.stderr else ""
-            )
+            fout.close()
+            ferr.close()
+            stdout = _srv_stdout.read_text(errors="replace")
+            stderr = _srv_stderr.read_text(errors="replace")
             return {
                 "connected": False,
                 "error": f"e2-server-gdb exited (rc={proc.returncode})",
@@ -605,21 +869,53 @@ def debug_connect(
             project=proj_name,
             connected=True,
             launch_cfg=launch_cfg,
+            _log_files=[fout, ferr],
         )
 
         try:
             rsp_socket, init_log = _initialize_debug_session(port, launch_cfg)
             _session.rsp_socket = rsp_socket
         except Exception as e:
+            # Collect server output for diagnosis
+            server_alive = proc.poll() is None
+            server_output = ""
+            try:
+                fout.close()
+                ferr.close()
+                server_output = _srv_stdout.read_text(errors="replace")
+                server_output += _srv_stderr.read_text(errors="replace")
+            except Exception:
+                pass
             try:
                 proc.terminate()
                 proc.wait(timeout=5)
             except Exception:
-                pass
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
             _session = None
+
+            error_msg = f"Connect failed: {e}"
+            if "10061" in str(e):
+                if server_alive:
+                    error_msg = (
+                        "E2 Lite probe communication error: e2-server-gdb started "
+                        "but could not open the debug port (likely blocked by a "
+                        "dialog box). This usually means the probe needs a USB "
+                        "replug. Disconnect and reconnect the E2 Lite USB cable, "
+                        "then retry."
+                    )
+                elif server_output:
+                    error_msg = (
+                        f"e2-server-gdb exited before accepting connections "
+                        f"(rc={proc.returncode}): {server_output.strip()[-800:]}"
+                    )
             return {
                 "connected": False,
-                "error": f"Failed to initialize debug session: {e}",
+                "error": error_msg,
+                "hint": "USB replug E2 Lite" if server_alive else None,
+                "serverOutput": server_output.strip()[-500:] if server_output else None,
             }
 
         return {
@@ -680,6 +976,11 @@ def debug_disconnect(cfg: Config) -> dict[str, Any]:
         pass
 
     result = {"disconnected": True, "project": _session.project}
+    for f in _session._log_files:
+        try:
+            f.close()
+        except Exception:
+            pass
     _session = None
     return result
 
@@ -740,6 +1041,13 @@ def debug_status(cfg: Config) -> dict[str, Any]:
     # If we have a session, verify it's still alive
     if _session is not None:
         if _session.server_running:
+            target_state = None
+            if _session.rsp_socket is not None:
+                try:
+                    state = _rsp_query_state(_session.rsp_socket)
+                    target_state = state or "running-no-stop-reply"
+                except Exception as exc:
+                    target_state = f"query-failed: {exc}"
             return {
                 "serverRunning": True,
                 "gdbConnected": _session.connected,
@@ -747,6 +1055,7 @@ def debug_status(cfg: Config) -> dict[str, Any]:
                 "port": _session.gdb_port,
                 "project": _session.project,
                 "external": _session.external,
+                "targetState": target_state,
                 "pid": _session.external_pid or (
                     _session.server_process.pid
                     if _session.server_process else None
@@ -785,13 +1094,16 @@ def flash_firmware(
     erase_data_flash: bool = False,
     build_config: str | None = None,
     launch_file: str | None = None,
+    run_after_flash: bool = False,
 ) -> dict[str, Any]:
     """Flash firmware (.mot) to target via e2-server-gdb + direct RSP.
 
     1. Start e2-server-gdb (with project-specific params from .launch)
     2. Connect via TCP socket using GDB Remote Serial Protocol
     3. Send init commands + M (memory write) packets from parsed .mot
-    4. Verify via read-back and disconnect
+    4. Verify via read-back
+    5. If *run_after_flash*, reset + continue and keep session alive;
+       otherwise disconnect.
     """
     mot_path = _find_firmware_file(cfg, project, file, build_config)
     if mot_path is None:
@@ -800,6 +1112,17 @@ def flash_firmware(
             "error": "No .mot file found. Build the project first.",
         }
 
+    if run_after_flash:
+        # All-in-one: start server, flash, reset, continue — single session.
+        # Skips _initialize_debug_session (which does its own reset+continue
+        # prematurely) and instead we flash+run inside _flash_via_rsp.
+        result = _flash_and_run(
+            cfg, mot_path, project, launch_file, erase_data_flash,
+        )
+        result["flashedFile"] = str(mot_path)
+        return result
+
+    # Standard flash: connect → flash → disconnect
     connect_result = debug_connect(cfg, project=project, launch_file=launch_file)
     if not connect_result.get("connected"):
         return {

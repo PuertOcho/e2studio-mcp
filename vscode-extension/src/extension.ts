@@ -5,15 +5,15 @@ import { ADMConsole } from "./admConsole";
 import { loadConfig, ExtensionConfig } from "./config";
 import { E2McpViewProvider } from "./webviewProvider";
 import { BuildRunner } from "./buildRunner";
-import { FlashRunner } from "./flashRunner";
 import { DebugProvider } from "./debugProvider";
+import { CommandBridge } from "./commandBridge";
 
 let admConsole: ADMConsole | undefined;
 let config: ExtensionConfig | undefined;
 let viewProvider: E2McpViewProvider | undefined;
 let buildRunner: BuildRunner | undefined;
-let flashRunner: FlashRunner | undefined;
 let debugProvider: DebugProvider | undefined;
+let commandBridge: CommandBridge | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("E2 MCP");
@@ -54,17 +54,15 @@ export function activate(context: vscode.ExtensionContext): void {
   admConsole = new ADMConsole(context);
   context.subscriptions.push(admConsole);
 
-  // Build & Flash runners
+  // Build runner
   buildRunner = new BuildRunner(config);
   context.subscriptions.push(buildRunner);
-  flashRunner = new FlashRunner(config);
-  context.subscriptions.push(flashRunner);
 
   // Webview sidebar panel
   viewProvider = new E2McpViewProvider(
     context.extensionUri,
     config,
-    (cmd, args) => {
+    async (cmd, args) => {
       switch (cmd) {
         case "selectProject":
           if (args?.project) {
@@ -132,11 +130,8 @@ export function activate(context: vscode.ExtensionContext): void {
         case "rebuild":
           vscode.commands.executeCommand("e2mcp.rebuild");
           break;
-        case "flash":
-          vscode.commands.executeCommand("e2mcp.flash");
-          break;
         case "debug": {
-          if (debugProvider && config) {
+          if (debugProvider && config && buildRunner) {
             // Prevent attempting to start a new session while one is active
             if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
               vscode.window.showInformationMessage(
@@ -152,10 +147,37 @@ export function activate(context: vscode.ExtensionContext): void {
 
             viewProvider?.setBusy(true);
             const project = viewProvider?.currentProject || config.defaultProject;
-            const fullConfig = debugProvider.buildConfig(project, true);
-            const folder = vscode.workspace.workspaceFolders?.[0];
-            vscode.debug.startDebugging(folder, fullConfig, { suppressDebugView: true });
-            // setBusy(false) is handled by onDidStartDebugSession / onDidTerminateDebugSession
+            const buildConfig = viewProvider?.currentBuildConfig || config.buildConfig;
+
+            try {
+              const buildResult = await buildRunner.build(project, buildConfig, "build");
+              viewProvider?.refreshMemory();
+              viewProvider?.updateWebview();
+
+              if (!buildResult.success) {
+                vscode.window.showWarningMessage(
+                  "Build failed. Debug session was not started."
+                );
+                viewProvider?.setBusy(false);
+                break;
+              }
+
+              const fullConfig = debugProvider.buildConfig(project, true);
+              const folder = vscode.workspace.workspaceFolders?.[0];
+              const started = await vscode.debug.startDebugging(folder, fullConfig, { suppressDebugView: true });
+              if (!started) {
+                viewProvider?.setBusy(false);
+                vscode.window.showErrorMessage(
+                  "Failed to start Renesas debug session."
+                );
+              }
+              // setBusy(false) is handled by onDidStartDebugSession / onDidTerminateDebugSession
+            } catch (e: any) {
+              viewProvider?.setBusy(false);
+              vscode.window.showErrorMessage(
+                `Debug startup failed: ${e.message}`
+              );
+            }
           }
           break;
         }
@@ -189,6 +211,15 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.debug.registerDebugConfigurationProvider("renesas-hardware", debugProvider)
   );
+
+  // Command bridge for Python MCP server
+  commandBridge = new CommandBridge(config.workspace, buildRunner, debugProvider, viewProvider, admConsole);
+  commandBridge.start().then((port) => {
+    outputChannel.appendLine(`[e2mcp] Command bridge listening on port ${port}`);
+  }).catch((err: Error) => {
+    outputChannel.appendLine(`[e2mcp] Command bridge failed: ${err.message}`);
+  });
+  context.subscriptions.push(commandBridge);
 
   // Restore persisted selections
   const savedProject = context.workspaceState.get<string>("e2mcp.project");
@@ -284,7 +315,7 @@ export function activate(context: vscode.ExtensionContext): void {
     viewProvider.setBusy(true);
     try {
       const result = await buildRunner.build(project, buildConfig, mode);
-      if (result.success && mode !== "clean") {
+      if (result.success) {
         viewProvider.refreshMemory();
         viewProvider.updateWebview();
       }
@@ -304,25 +335,6 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // Flash command
-  context.subscriptions.push(
-    vscode.commands.registerCommand("e2mcp.flash", async () => {
-      if (!viewProvider || !flashRunner) return;
-      const project = viewProvider.currentProject;
-      const buildConfig = viewProvider.currentBuildConfig;
-      const launchFile = viewProvider.currentLaunchFile;
-      if (!project) {
-        vscode.window.showWarningMessage("No project selected.");
-        return;
-      }
-      viewProvider.setBusy(true);
-      try {
-        await flashRunner.flash(project, buildConfig, launchFile || undefined);
-      } finally {
-        viewProvider.setBusy(false);
-      }
-    })
-  );
-
   context.subscriptions.push(
     vscode.commands.registerCommand("e2mcp.stopDebug", () => {
       const session = vscode.debug.activeDebugSession;

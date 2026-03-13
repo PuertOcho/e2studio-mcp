@@ -174,7 +174,8 @@ El flujo previsto en la extensión es:
 - seleccionar proyecto detectado automáticamente dentro del workspace e2 Studio
 - seleccionar `buildConfig` real a partir de carpetas de salida con `Makefile`
 - seleccionar `.launch` concreto o dejar `Auto-detect` para priorizar `*HardwareDebug*`
-- lanzar `Build`, `Flash` o `Debug` usando esa selección activa
+- lanzar `Build`, `Clean`, `Rebuild`, `Flash`, `Flash+Run` o `Debug` usando esa selección activa
+- usar `Validate` para automatizar `rebuild + flash+run + apertura de consola virtual`
 
 ### Nota sobre Memory
 

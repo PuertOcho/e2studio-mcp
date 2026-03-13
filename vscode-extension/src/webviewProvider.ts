@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as cp from "child_process";
 import {
   ProjectInfo,
   MemoryInfo,
@@ -20,6 +21,9 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private busy = false;
   private mcpEnabled = true;
   private debugActive = false;
+  private probeStatus: "ok" | "warning" | "disconnected" | "unknown" = "unknown";
+  private probeStatusText = "";
+  private probeCheckTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -27,7 +31,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     private readonly onCommand: (
       cmd: string,
       args?: Record<string, string>
-    ) => void
+    ) => void | Promise<void>
   ) {
     this.selectedProject = config.defaultProject;
     this.selectedBuildConfig = config.buildConfig;
@@ -98,6 +102,13 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri],
     };
 
+    this.refreshMemory();
+    this.checkProbeStatus();
+    // Check probe status every 5 seconds
+    this.probeCheckTimer = setInterval(() => this.checkProbeStatus(), 5000);
+    webviewView.onDidDispose(() => {
+      if (this.probeCheckTimer) clearInterval(this.probeCheckTimer);
+    });
     webviewView.webview.html = this.getHtml();
 
     webviewView.webview.onDidReceiveMessage((msg) => {
@@ -124,7 +135,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case "build":
         case "clean":
         case "rebuild":
-        case "flash":
         case "debug":
         case "stopDebug":
           this.onCommand(msg.command);
@@ -142,6 +152,71 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 
     // Push initial state
     this.updateWebview();
+  }
+
+  /** Check E2 Lite probe USB status via PowerShell Get-PnpDevice. */
+  checkProbeStatus(): void {
+    const debugger_ = this.selectedDebugger;
+    if (debugger_ === "SIMULATOR") {
+      this.probeStatus = "ok";
+      this.probeStatusText = "";
+      this.pushProbeStatus();
+      return;
+    }
+
+    const probeName = debugger_ === "JLINK" ? "J-Link" : "Renesas";
+    // Filter by Present to exclude ghost/phantom devices from previous connections.
+    // Also check for zombie e2-server-gdb processes that block the probe.
+    // Use execFile to avoid cmd.exe double-quote interpretation of $variables.
+    // @() forces $d to always be an array (empty [] when no devices, [obj] for single).
+    const cmd = `$d = @(Get-PnpDevice -FriendlyName '*${probeName}*' -PresentOnly -ErrorAction SilentlyContinue | Select-Object Status, FriendlyName); $z = !!(Get-Process -Name 'e2-server-gdb' -ErrorAction SilentlyContinue); ConvertTo-Json -Compress -Depth 3 @{devices=$d;zombie=$z}`;
+
+    cp.execFile('powershell', ['-NoProfile', '-Command', cmd], { timeout: 5000 }, (_err, stdout) => {
+      const prev = this.probeStatus;
+      const prevText = this.probeStatusText;
+      if (!stdout || !stdout.trim()) {
+        this.probeStatus = "disconnected";
+        this.probeStatusText = `${debugger_} not detected — check USB connection`;
+      } else {
+        try {
+          const raw = JSON.parse(stdout.trim());
+          const devArr: { Status: string; FriendlyName: string }[] = Array.isArray(raw.devices) ? raw.devices : [];
+          const hasZombie = !!raw.zombie && !this.debugActive;
+
+          if (devArr.length === 0) {
+            this.probeStatus = "disconnected";
+            this.probeStatusText = `${debugger_} not detected — check USB connection`;
+          } else {
+            const allOk = devArr.every((d: { Status: string }) => d.Status === "OK");
+            if (allOk && !hasZombie) {
+              this.probeStatus = "ok";
+              this.probeStatusText = "";
+            } else if (hasZombie) {
+              this.probeStatus = "warning";
+              this.probeStatusText = "Stale e2-server-gdb process blocking probe — restart VS Code or kill process";
+            } else {
+              const badDevices = devArr.filter((d: { Status: string }) => d.Status !== "OK");
+              this.probeStatus = "warning";
+              this.probeStatusText = `${debugger_} error: ${badDevices.map((d: { Status: string }) => d.Status).join(", ")} — reconnect USB`;
+            }
+          }
+        } catch {
+          this.probeStatus = "unknown";
+          this.probeStatusText = "";
+        }
+      }
+      if (this.probeStatus !== prev || this.probeStatusText !== prevText) {
+        this.pushProbeStatus();
+      }
+    });
+  }
+
+  private pushProbeStatus(): void {
+    this.view?.webview.postMessage({
+      command: "setProbeStatus",
+      status: this.probeStatus,
+      text: this.probeStatusText,
+    });
   }
 
   /** Refresh the project list from disk. */
@@ -173,6 +248,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({
       command: "setMemory",
       memory: this.memory ?? null,
+      html: this.renderMemoryContent(),
     });
   }
 
@@ -225,9 +301,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       )
       .join("\n");
 
-    const memoryBars = this.memory
-      ? this.renderMemoryBars(this.memory)
-      : `<div class="placeholder">Build project to see memory usage</div>`;
+    const memoryBars = this.renderMemoryContent();
 
     const launchFileOptions = [
       `<option value="" ${this.selectedLaunchFile === "" ? "selected" : ""}>Auto-detect (prefer HardwareDebug)</option>`,
@@ -531,9 +605,40 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       transform: translateX(18px);
       background: var(--vscode-button-foreground, #fff);
     }
+
+    /* Probe status alert */
+    .probe-alert {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      margin-bottom: var(--section-gap);
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .probe-alert.disconnected {
+      display: flex;
+      background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+      border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+      color: var(--vscode-errorForeground, #f48771);
+    }
+    .probe-alert.warning {
+      display: flex;
+      background: var(--vscode-inputValidation-warningBackground, #352a05);
+      border: 1px solid var(--vscode-inputValidation-warningBorder, #9d8500);
+      color: var(--vscode-editorWarning-foreground, #cca700);
+    }
+    .probe-alert .probe-icon { font-size: 16px; flex-shrink: 0; }
   </style>
 </head>
 <body>
+  <!-- PROBE STATUS ALERT -->
+  <div id="probeAlert" class="probe-alert ${this.probeStatus === "ok" || this.probeStatus === "unknown" ? "" : this.probeStatus}">
+    <span class="probe-icon">${this.probeStatus === "disconnected" ? "&#x26D4;" : "&#x26A0;"}</span>
+    <span id="probeText">${this.esc(this.probeStatusText)}</span>
+  </div>
+
   <!-- MCP TOGGLE -->
   <div class="mcp-toggle-row">
     <span class="mcp-toggle-label">MCP Server</span>
@@ -576,7 +681,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       <button class="action-btn" onclick="postMsg('build')">Build</button>
       <button class="action-btn secondary" onclick="postMsg('clean')">Clean</button>
       <button class="action-btn secondary" onclick="postMsg('rebuild')">Rebuild</button>
-      <button class="action-btn" onclick="postMsg('flash')">Flash</button>
       <button id="debugBtn" class="action-btn" onclick="postMsg('debug')" ${this.debugActive ? "disabled" : ""}>&#x25B6; Debug</button>
       <button id="stopBtn" class="action-btn secondary" onclick="postMsg('stopDebug')" ${this.debugActive ? "" : "disabled"}>&#x25A0; Stop</button>
     </div>
@@ -635,7 +739,10 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       const msg = event.data;
       switch (msg.command) {
         case 'setMemory':
-          // Full re-render handled by extension updating HTML
+          if (typeof msg.html === 'string') {
+            const memoryContent = document.getElementById('memoryContent');
+            if (memoryContent) memoryContent.innerHTML = msg.html;
+          }
           break;
         case 'setBusy': {
           const btns = document.querySelectorAll('.action-btn');
@@ -657,6 +764,17 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case 'setMcpState': {
           const toggle = document.getElementById('mcpToggle');
           if (toggle) toggle.checked = msg.enabled;
+          break;
+        }
+        case 'setProbeStatus': {
+          const alert = document.getElementById('probeAlert');
+          const text = document.getElementById('probeText');
+          if (alert && text) {
+            alert.className = 'probe-alert ' + (msg.status === 'ok' || msg.status === 'unknown' ? '' : msg.status);
+            text.textContent = msg.text || '';
+            const icon = alert.querySelector('.probe-icon');
+            if (icon) icon.textContent = msg.status === 'disconnected' ? '\\u26D4' : '\\u26A0';
+          }
           break;
         }
       }
@@ -701,6 +819,14 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       bar("RAM", "ram", mem.ram.used, mem.ram.total),
       bar("Data", "df", mem.dataFlash.used, mem.dataFlash.total),
     ].join("\n");
+  }
+
+  private renderMemoryContent(): string {
+    if (!this.memory) {
+      return `<div class="placeholder">No memory data available for the selected build. Run Build or Rebuild to refresh it.</div>`;
+    }
+
+    return this.renderMemoryBars(this.memory);
   }
 
   private formatSize(bytes: number): string {

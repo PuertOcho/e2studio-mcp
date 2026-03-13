@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { ExtensionConfig } from "./config";
-import { parseLaunchFile, findLaunchFile } from "./launchParser";
+import { parseLaunchFile, findLaunchFile, findRunLaunchFile } from "./launchParser";
 import { E2McpViewProvider } from "./webviewProvider";
 
 /** Map debugger dropdown values to serverParam flag values. */
@@ -58,7 +58,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
   buildConfig(projectName: string, stopOnEntry: boolean): vscode.DebugConfiguration {
     const workspace = this.config.workspace;
     const buildConfig = this.viewProvider.currentBuildConfig || this.config.buildConfig;
-    const debuggerType = this.viewProvider.currentDebugger || "E2LITE";
+    const sidebarDebuggerType = this.viewProvider.currentDebugger || "E2LITE";
     const launchSelection = this.viewProvider.currentLaunchFile || undefined;
     const flash = this.config.flash;
 
@@ -79,7 +79,9 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       : "e2-server-gdb.exe";
 
     // Try to parse .launch file for detailed serverParameters and initCommands
-    const launchFile = findLaunchFile(projectRoot, launchSelection);
+    const launchFile = stopOnEntry
+      ? findLaunchFile(projectRoot, launchSelection)
+      : findRunLaunchFile(projectRoot, launchSelection);
     let serverParameters: Record<string, string | number> = {};
     let initCommands: string[] = [
       "monitor set_internal_mem_overwrite 0-581",
@@ -88,15 +90,24 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
     ];
     let gdbArguments: string[] = [];
     let port = String(flash.gdbPort);
+    let effectiveDevice = flash.device;
+    let effectiveDebuggerType = sidebarDebuggerType;
 
     if (launchFile) {
       const parsed = parseLaunchFile(launchFile);
       if (Object.keys(parsed.serverParametersMap).length > 0) {
         serverParameters = parsed.serverParametersMap;
+        const parsedDebugger = parsed.serverParametersMap["-g"];
+        if (typeof parsedDebugger === "string" && parsedDebugger) {
+          effectiveDebuggerType = parsedDebugger;
+        }
       }
       if (parsed.initCommands.length > 0) {
         initCommands = parsed.initCommands;
-        // Ensure ADM virtual console is always enabled (e2 Studio .launch doesn't include it)
+        // Ensure required monitor commands are always present
+        if (!initCommands.some((c) => c.includes("set_internal_mem_overwrite"))) {
+          initCommands.unshift("monitor set_internal_mem_overwrite 0-581");
+        }
         if (!initCommands.some((c) => c.includes("start_interface,ADM"))) {
           initCommands.push("monitor start_interface,ADM,main");
         }
@@ -108,7 +119,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
         port = String(parsed.port);
       }
       if (parsed.device) {
-        flash.device = parsed.device;
+        effectiveDevice = parsed.device;
       }
     }
 
@@ -125,9 +136,12 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       };
     }
 
-    // Override debugger type from sidebar selection
-    serverParameters["-g"] = DEBUGGER_MAP[debuggerType] || debuggerType;
-    serverParameters["-t"] = flash.device;
+    // Remove -g and -t from serverParameters: the Renesas adapter generates
+    // these from target.debuggerType and target.device, plus device XML.
+    // Having them in serverParameters too causes duplicates and conflicting
+    // values (e.g., "-g E2LITE" from adapter + "-g E2Lite" from params).
+    delete serverParameters["-g"];
+    delete serverParameters["-t"];
 
     const suffix = stopOnEntry ? "" : " (No startup break)";
 
@@ -142,8 +156,8 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       target: {
         server: serverPath.replace(/\\/g, "/"),
         deviceFamily: "RX",
-        debuggerType: debuggerType,
-        device: flash.device,
+        debuggerType: effectiveDebuggerType,
+        device: effectiveDevice,
         serverParameters,
         port,
         serverPort: port,

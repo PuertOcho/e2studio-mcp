@@ -72,11 +72,6 @@
         "category": "E2 MCP"
       },
       {
-        "command": "e2mcp.flash",
-        "title": "Flash Firmware",
-        "category": "E2 MCP"
-      },
-      {
         "command": "e2mcp.openConsole",
         "title": "Open Virtual Console Output",
         "category": "E2 MCP"
