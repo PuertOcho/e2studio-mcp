@@ -3,18 +3,9 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
-export interface DeviceInfo {
-  family: string;
-  romSize: number;
-  ramSize: number;
-  dataFlashSize: number;
-  romRange: string;
-  ramRange: string;
-  dataFlashRange: string;
-}
-
 export interface ExtensionConfig {
   workspace: string;
+  projectRootPath: string;
   defaultProject: string;
   buildConfig: string;
   buildMode: string;
@@ -34,7 +25,6 @@ export interface ExtensionConfig {
     inputClock: string;
     idCode: string;
   };
-  devices: Record<string, DeviceInfo>;
 }
 
 function resolveBuildJobs(rawValue: unknown): number {
@@ -114,9 +104,16 @@ export function loadConfig(): ExtensionConfig {
   }
 
   const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  const configuredProjectsPath = vscode.workspace
+    .getConfiguration("e2mcp")
+    .get<string>("projectsPath", "")
+    .trim();
+  const defaultProjectRootPath = raw.workspace ?? "";
+  const projectRootPath = configuredProjectsPath || defaultProjectRootPath;
 
   return {
     workspace: raw.workspace ?? "",
+    projectRootPath,
     defaultProject: raw.defaultProject ?? "headc-fw",
     buildConfig: raw.buildConfig ?? "HardwareDebug",
     buildMode: raw.buildMode ?? "make",
@@ -136,6 +133,5 @@ export function loadConfig(): ExtensionConfig {
       inputClock: raw.flash?.inputClock ?? "24.0",
       idCode: raw.flash?.idCode ?? "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
     },
-    devices: raw.devices ?? {},
   };
 }

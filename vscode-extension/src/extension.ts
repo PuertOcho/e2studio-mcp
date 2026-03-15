@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   try {
     config = loadConfig();
     outputChannel.appendLine(
-      `[e2mcp] Config loaded: workspace=${config.workspace}, project=${config.defaultProject}`
+      `[e2mcp] Config loaded: workspace=${config.workspace}, projectsRoot=${config.projectRootPath}, project=${config.defaultProject}`
     );
   } catch (e: any) {
     outputChannel.appendLine(
@@ -34,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
     config = {
       workspace: "",
+      projectRootPath: "",
       defaultProject: "headc-fw",
       buildConfig: "HardwareDebug",
       buildMode: "make",
@@ -49,7 +50,6 @@ export function activate(context: vscode.ExtensionContext): void {
         inputClock: "24.0",
         idCode: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
       },
-      devices: {},
     };
   }
 
@@ -64,6 +64,42 @@ export function activate(context: vscode.ExtensionContext): void {
   // Flash runner
   flashRunner = new FlashRunner(config);
   context.subscriptions.push(flashRunner);
+
+  const selectProjectsFolder = async (): Promise<void> => {
+    if (!config || !viewProvider) {
+      return;
+    }
+
+    const selected = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: "Use as Renesas projects folder",
+      defaultUri: config.projectRootPath
+        ? vscode.Uri.file(config.projectRootPath)
+        : vscode.workspace.workspaceFolders?.[0]?.uri,
+    });
+    const folderPath = selected?.[0]?.fsPath;
+    if (!folderPath) {
+      return;
+    }
+
+    config.projectRootPath = folderPath;
+    await vscode.workspace
+      .getConfiguration("e2mcp")
+      .update("projectsPath", folderPath, vscode.ConfigurationTarget.Workspace);
+    outputChannel.appendLine(`[e2mcp] Projects folder: ${folderPath}`);
+
+    if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+      await disableMcpAndHardware(outputChannel);
+      vscode.window.showInformationMessage(
+        "Projects folder changed — hardware disconnected. Re-enable MCP to reconnect."
+      );
+    }
+
+    viewProvider.refreshProjects();
+    viewProvider.updateWebview();
+  };
 
   // Webview sidebar panel
   viewProvider = new E2McpViewProvider(
@@ -118,6 +154,10 @@ export function activate(context: vscode.ExtensionContext): void {
             }
           }
           break;
+        case "selectProjectsFolder": {
+          await selectProjectsFolder();
+          break;
+        }
         case "selectLaunchFile":
           viewProvider?.setSelectedLaunchFile(args?.launchFile ?? "");
           context.workspaceState.update("e2mcp.launchFile", args?.launchFile ?? "");
@@ -164,7 +204,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
             try {
               const buildResult = await buildRunner.build(project, buildConfig, "build");
-              viewProvider?.refreshMemory();
               viewProvider?.updateWebview();
 
               if (!buildResult.success) {
@@ -246,6 +285,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Commands
   context.subscriptions.push(
+    vscode.commands.registerCommand("e2mcp.selectProjectsFolder", async () => {
+      await selectProjectsFolder();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("e2mcp.openConsole", () => {
       admConsole?.startManual();
     })
@@ -261,7 +306,6 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       if (pick) {
         viewProvider?.setSelectedProject(pick);
-        viewProvider?.refreshMemory();
         viewProvider?.updateWebview();
         context.workspaceState.update("e2mcp.project", pick);
         outputChannel.appendLine(`[e2mcp] Project: ${pick}`);
@@ -328,9 +372,6 @@ export function activate(context: vscode.ExtensionContext): void {
     viewProvider.setBusy(true);
     try {
       const result = await buildRunner.build(project, buildConfig, mode);
-      const hint = mode === "clean" ? "cleaned" as const
-        : result.success ? "none" as const : "build-failed" as const;
-      viewProvider.refreshMemory(hint);
       if (result.success) {
         viewProvider.updateWebview();
       }
@@ -369,7 +410,6 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         // Build first
         const buildResult = await buildRunner.build(project, buildConfig, "build");
-        viewProvider.refreshMemory();
         viewProvider.updateWebview();
 
         if (!buildResult.success) {

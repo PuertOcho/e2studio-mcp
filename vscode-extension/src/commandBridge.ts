@@ -106,7 +106,6 @@ export class CommandBridge implements vscode.Disposable {
           return { error: "No project selected" };
         }
         const result = await this.buildRunner.build(project, buildConfig, command);
-        this.viewProvider.refreshMemory();
         return {
           success: result.success,
           errors: result.errors,
@@ -123,7 +122,6 @@ export class CommandBridge implements vscode.Disposable {
         }
 
         const buildResult = await this.buildRunner.build(project, buildConfig, "build");
-        this.viewProvider.refreshMemory();
         this.viewProvider.updateWebview();
         if (!buildResult.success) {
           return {

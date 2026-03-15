@@ -67,6 +67,11 @@
         "category": "E2 MCP"
       },
       {
+        "command": "e2mcp.selectProjectsFolder",
+        "title": "Select Projects Folder",
+        "category": "E2 MCP"
+      },
+      {
         "command": "e2mcp.selectDebugger",
         "title": "Select Debugger",
         "category": "E2 MCP"
@@ -114,6 +119,11 @@
           "type": "string",
           "default": "",
           "description": "Path to e2studio-mcp.json configuration file"
+        },
+        "e2mcp.projectsPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override the folder that contains the Renesas e2 Studio projects"
         },
         "e2mcp.pythonPath": {
           "type": "string",

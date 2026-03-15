@@ -2,9 +2,7 @@ import * as vscode from "vscode";
 import * as cp from "child_process";
 import {
   ProjectInfo,
-  MemoryInfo,
   scanProjects,
-  getMemoryInfo,
 } from "./projectManager";
 import { ExtensionConfig } from "./config";
 
@@ -17,10 +15,8 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private selectedDebugger = "E2LITE";
   private selectedBuildConfig = "HardwareDebug";
   private selectedLaunchFile = "";
-  private memory?: MemoryInfo;
   private busy = false;
   private busyTimeout?: ReturnType<typeof setTimeout>;
-  private memoryHint: "none" | "cleaned" | "build-failed" = "none";
   private mcpEnabled = true;
   private debugActive = false;
   private probeStatus: "ok" | "warning" | "disconnected" | "unknown" = "unknown";
@@ -47,6 +43,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   get currentBuildConfig(): string { return this.selectedBuildConfig; }
   get currentDebugger(): string { return this.selectedDebugger; }
   get currentLaunchFile(): string { return this.selectedLaunchFile; }
+  get currentProjectRootPath(): string { return this.config.projectRootPath; }
 
   /** Restore selections from persisted state. */
   restoreState(project?: string, debugger_?: string, buildConfig?: string, launchFile?: string): void {
@@ -117,7 +114,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri],
     };
 
-    this.refreshMemory();
     this.checkProbeStatus();
     // Check probe status every 5 seconds
     this.probeCheckTimer = setInterval(() => this.checkProbeStatus(), 5000);
@@ -131,7 +127,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case "selectProject":
           this.setSelectedProject(msg.value);
           this.onCommand("selectProject", { project: msg.value });
-          this.refreshMemory();
           this.updateWebview();
           break;
         case "selectDebugger":
@@ -141,7 +136,9 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case "selectBuildConfig":
           this.setSelectedBuildConfig(msg.value);
           this.onCommand("selectBuildConfig", { config: msg.value });
-          this.refreshMemory();
+          break;
+        case "selectProjectsFolder":
+          this.onCommand("selectProjectsFolder");
           break;
         case "selectLaunchFile":
           this.setSelectedLaunchFile(msg.value);
@@ -160,7 +157,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
           break;
         case "refresh":
           this.refreshProjects();
-          this.refreshMemory();
           this.updateWebview();
           break;
       }
@@ -237,37 +233,17 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 
   /** Refresh the project list from disk. */
   refreshProjects(): void {
-    this.projects = scanProjects(this.config.workspace);
+    this.projects = scanProjects(this.config.projectRootPath);
     // Validate selection
-    if (
-      this.projects.length > 0 &&
-      !this.projects.find((p) => p.name === this.selectedProject)
-    ) {
+    if (this.projects.length === 0) {
+      this.selectedProject = "";
+      this.selectedLaunchFile = "";
+      return;
+    }
+
+    if (!this.projects.find((p) => p.name === this.selectedProject)) {
       this.setSelectedProject(this.projects[0].name);
     }
-  }
-
-  /** Refresh memory usage from .map file.
-   *  @param hint Optional context for why data may be missing. */
-  refreshMemory(hint?: "none" | "cleaned" | "build-failed"): void {
-    this.memoryHint = hint ?? "none";
-    const proj = this.projects.find((p) => p.name === this.selectedProject);
-    if (proj) {
-      const deviceKey = this.resolveDeviceKey(proj);
-      const deviceInfo = this.config.devices[deviceKey];
-      this.memory = getMemoryInfo(
-        proj.path,
-        this.selectedBuildConfig,
-        deviceInfo
-      );
-    } else {
-      this.memory = undefined;
-    }
-    this.view?.webview.postMessage({
-      command: "setMemory",
-      memory: this.memory ?? null,
-      html: this.renderMemoryContent(),
-    });
   }
 
   /** Update the MCP enabled state and refresh the toggle in the webview. */
@@ -286,6 +262,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     const proj = this.projects.find((p) => p.name === this.selectedProject);
     const buildConfigs = proj?.buildConfigs ?? ["HardwareDebug"];
     const launchFiles = proj?.launchFiles ?? [];
+    const projectRootPath = this.config.projectRootPath || "(not configured)";
 
     const projectRadios = this.projects
       .map(
@@ -318,8 +295,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
           `<option value="${this.esc(c)}" ${c === this.selectedBuildConfig ? "selected" : ""}>${this.esc(c)}</option>`
       )
       .join("\n");
-
-    const memoryBars = this.renderMemoryContent();
 
     const launchFileOptions = [
       `<option value="" ${this.selectedLaunchFile === "" ? "selected" : ""}>Auto-detect (prefer HardwareDebug)</option>`,
@@ -482,53 +457,26 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       100% { left: 100%; }
     }
 
-    /* Memory bars */
-    .mem-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 4px;
-      font-size: 12px;
-    }
-    .mem-label {
-      min-width: 32px;
-      font-weight: 600;
-      color: var(--vscode-descriptionForeground);
-    }
-    .mem-bar-bg {
-      flex: 1;
-      height: 14px;
-      background: var(--vscode-editorWidget-background, #2d2d2d);
-      border-radius: 3px;
-      overflow: hidden;
-      position: relative;
-    }
-    .mem-bar-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.3s ease;
-    }
-    .mem-bar-fill.rom { background: var(--vscode-charts-blue, #3794ff); }
-    .mem-bar-fill.ram { background: var(--vscode-charts-green, #89d185); }
-    .mem-bar-fill.df  { background: var(--vscode-charts-orange, #cca700); }
-    .mem-pct {
-      min-width: 32px;
-      text-align: right;
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-    }
-    .mem-size {
-      min-width: 65px;
-      text-align: right;
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-    }
-
     .placeholder {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
       font-style: italic;
       padding: 4px 0;
+    }
+    .path-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: var(--inner-gap);
+    }
+    .path-value {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      word-break: break-all;
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.08));
+      border: 1px solid var(--vscode-widget-border, transparent);
     }
 
     /* Refresh link */
@@ -672,7 +620,13 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       Project
       <span class="section-actions" onclick="postMsg('refresh')" title="Refresh projects">&#x21bb;</span>
     </div>
-    ${this.projects.length > 0 ? projectRadios : `<div class="placeholder">No projects found in workspace</div>`}
+    <div class="path-row">
+      <div class="path-value" title="${this.esc(projectRootPath)}">${this.esc(projectRootPath)}</div>
+      <div class="actions-row">
+        <button class="action-btn secondary" onclick="postMsg('selectProjectsFolder')">Select Folder</button>
+      </div>
+    </div>
+    ${this.projects.length > 0 ? projectRadios : `<div class="placeholder">No projects found in the selected folder.</div>`}
   </div>
 
   <!-- CONFIGURATION -->
@@ -705,12 +659,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     </div>
     <div id="loading-bar" class="loading-bar"></div>
   </div>
-
-  <!-- MEMORY -->
-  <details class="section" open>
-    <summary><span class="chevron">&#x25B6;</span> Memory</summary>
-    <div id="memoryContent">${memoryBars}</div>
-  </details>
 
   <script>
     const vscode = acquireVsCodeApi();
@@ -757,12 +705,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     window.addEventListener('message', event => {
       const msg = event.data;
       switch (msg.command) {
-        case 'setMemory':
-          if (typeof msg.html === 'string') {
-            const memoryContent = document.getElementById('memoryContent');
-            if (memoryContent) memoryContent.innerHTML = msg.html;
-          }
-          break;
         case 'setBusy': {
           const btns = document.querySelectorAll('.action-btn');
           btns.forEach(btn => {
@@ -813,78 +755,11 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 </html>`;
   }
 
-  private renderMemoryBars(mem: MemoryInfo): string {
-    const bar = (
-      label: string,
-      cls: string,
-      used: number,
-      total: number
-    ): string => {
-      const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0;
-      const sizeStr = this.formatSize(used);
-      const totalStr = this.formatSize(total);
-      return `<div class="mem-row">
-        <span class="mem-label">${label}</span>
-        <div class="mem-bar-bg">
-          <div class="mem-bar-fill ${cls}" style="width:${pct.toFixed(1)}%"></div>
-        </div>
-        <span class="mem-pct">${pct.toFixed(0)}%</span>
-        <span class="mem-size">${sizeStr}/${totalStr}</span>
-      </div>`;
-    };
-
-    return [
-      bar("ROM", "rom", mem.rom.used, mem.rom.total),
-      bar("RAM", "ram", mem.ram.used, mem.ram.total),
-      bar("Data", "df", mem.dataFlash.used, mem.dataFlash.total),
-    ].join("\n");
-  }
-
-  private renderMemoryContent(): string {
-    if (!this.memory) {
-      switch (this.memoryHint) {
-        case "cleaned":
-          return `<div class="placeholder">Build artifacts cleaned. Run Build to refresh memory data.</div>`;
-        case "build-failed":
-          return `<div class="placeholder">Last build failed \u2014 no valid .map file. Fix errors and rebuild.</div>`;
-        default:
-          return `<div class="placeholder">No memory data available. Run Build or Rebuild to see usage.</div>`;
-      }
-    }
-
-    return this.renderMemoryBars(this.memory);
-  }
-
-  private formatSize(bytes: number): string {
-    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + "M";
-    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + "K";
-    return bytes + "B";
-  }
-
   private esc(s: string): string {
     return s
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
-  }
-
-  private resolveDeviceKey(project: ProjectInfo): string {
-    const candidates = [
-      project.deviceCommand,
-      project.deviceName,
-      project.device,
-      this.config.flash.device,
-    ].filter((value): value is string => !!value);
-
-    for (const candidate of candidates) {
-      if (this.config.devices[candidate]) return candidate;
-      const withoutDual = candidate.replace(/_DUAL$/, "");
-      if (this.config.devices[withoutDual]) return withoutDual;
-      const packageMatch = candidate.match(/^([A-Z0-9]+)(Dx[A-Z0-9]+)$/i);
-      if (packageMatch && this.config.devices[packageMatch[1]]) return packageMatch[1];
-    }
-
-    return this.config.flash.device;
   }
 }

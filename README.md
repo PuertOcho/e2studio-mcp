@@ -167,6 +167,8 @@ py -3 -m e2studio_mcp
 
 La carpeta `vscode-extension/` incluye un panel lateral y comandos para selección de proyecto, build, flash y debug.
 
+La extensión puede usar una carpeta de proyectos Renesas distinta de la definida en `e2studio-mcp.json` mediante el ajuste `e2mcp.projectsPath` o el comando `E2 MCP: Select Projects Folder`.
+
 Los requisitos funcionales abiertos de estabilización se consolidan en `STABILIZATION_REQUIREMENTS.md` para separar comportamiento actual de decisiones aún no cerradas.
 
 El flujo previsto en la extensión es:
@@ -199,6 +201,7 @@ npm run compile
 ### Ajustes de la extensión
 
 - `e2mcp.configPath`: ruta a `e2studio-mcp.json`
+- `e2mcp.projectsPath`: carpeta que contiene los proyectos e2 Studio / Renesas a mostrar en el panel
 - `e2mcp.pythonPath`: ejecutable de Python (`py`, `python3`, `python`)
 - `e2mcp.consolePollMs`: intervalo de sondeo de consola virtual
 - `buildJobs` en `e2studio-mcp.json`: número de compilaciones paralelas para `make`. Usa `0` para modo automático según CPU, con máximo `16`.

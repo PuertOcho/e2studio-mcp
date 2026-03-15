@@ -38,7 +38,7 @@ export class BuildRunner implements vscode.Disposable {
 
   /** Get the project path from workspace + project name. */
   private projectPath(project: string): string {
-    return path.join(this.config.workspace, project);
+    return path.join(this.config.projectRootPath, project);
   }
 
   /** Resolve the make executable path. */
