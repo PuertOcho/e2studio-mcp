@@ -154,7 +154,7 @@
 ### 3.2 Publicacion Marketplace
 
 - [x] Cambiar licencia a propietaria/BSL antes de publicar.
-- [ ] Completar metadata: `repository`, `homepage`, `bugs`, `keywords`.
+- [x] Completar metadata: `repository`, `homepage`, `bugs`, `keywords`.
 - [ ] Completar assets: icono, banner, screenshots.
 - [ ] Crear publisher `PuertOcho` y PAT en Azure DevOps.
 - [ ] Actualizar entorno de release a Node >= 18 (con Node 16.13.0 `vsce package` falla por `ReadableStream is not defined`).
@@ -184,7 +184,7 @@
 - [x] Cambiar licencia de `MIT` a propietaria/BSL en `package.json`, README y LICENSE.txt.
 - [x] Eliminar sourcemaps del build de produccion (script `compile:prod` sin `--sourcemap`, con `--minify`).
 - [x] Añadir `*.map` a `.vscodeignore` (ya estaba desde el inicio).
-- [ ] Completar metadata de `package.json` (`repository`, `homepage`, `bugs`, `keywords`).
+- [x] Completar metadata de `package.json` (`repository`, `homepage`, `bugs`, `keywords`).
 - [ ] Completar assets de marketplace (icono, banner, screenshots para listing).
 - [ ] Crear publisher `PuertOcho` y PAT en Azure DevOps.
 

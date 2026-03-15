@@ -5,6 +5,26 @@
   "version": "0.1.0",
   "publisher": "PuertOcho",
   "license": "SEE LICENSE IN LICENSE.txt",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PuertOcho/e2studio-mcp"
+  },
+  "homepage": "https://github.com/PuertOcho/e2studio-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/PuertOcho/e2studio-mcp/issues"
+  },
+  "keywords": [
+    "renesas",
+    "rx",
+    "e2studio",
+    "embedded",
+    "mcp",
+    "flash",
+    "debug",
+    "ccrx",
+    "e2-lite",
+    "j-link"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
