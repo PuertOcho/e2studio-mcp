@@ -3,13 +3,14 @@
 - Proyecto: `e2Studio_2024_workspace/e2studio-mcp`
 - Stack: Python (`mcp`) + VS Code Extension (TypeScript)
 - Ultima actualizacion: 2026-03-15
-- Estado global: `MVP funcional` tagged como `v0.1.0` + fase activa de estabilizacion funcional/UX
+- Estado global: `MVP funcional` — estabilizacion completada, pendiente proteccion comercial y publicacion
 
 ## 1. Estado Tecnico
 
 ### 1.1 Backend MCP (Python)
 
 - Estado: `COMPLETADO`
+- Distribucion actual: `.py` fuente directo — **sin proteccion**
 - Tools disponibles:
   - Build: `build_project`, `clean_project`, `rebuild_project`, `get_build_status`, `get_build_size`
   - Project/Map: `list_projects`, `get_project_config`, `get_map_summary`, `get_linker_sections`
@@ -24,181 +25,216 @@
 
 ### 1.2 Extension VS Code (`vscode-extension`)
 
-- Estado: `FUNCIONAL`
+- Estado: `FUNCIONAL — ESTABILIZACION COMPLETADA`
+- Distribucion actual: bundle JS con sourcemap — **sin proteccion**
+- Licencia actual: `MIT` — **incompatible con modelo comercial**
 - Incluye:
   - Panel lateral `E2 MCP`
-  - Seleccion de proyecto/debugger/buildConfig
-  - Seleccion explicita de `.launch` o modo auto-detect
-  - Comandos registrados: `build`, `clean`, `rebuild`, `stopDebug`, `openConsole`, `selectProject`, `selectDebugger`, `selectLaunch`
-  - Integracion con debug `renesas-hardware` (build automatica previa + lanzamiento de sesion)
-  - Consola virtual ADM en `Output` (sin duplicacion en el panel)
+  - Seleccion de proyecto/debugger/buildConfig/launchFile
+  - Comandos registrados: `build`, `clean`, `rebuild`, `flash`, `stopDebug`, `openConsole`, `selectProject`, `selectDebugger`, `selectLaunch`
+  - Flash firmware (build + flash via e2-server-gdb + RSP, `runAfterFlash: true`)
+  - Debug con build automatica previa + deteccion de e2 Studio abierto
+  - Consola virtual ADM en `Output`
   - Deteccion de probe USB y procesos `e2-server-gdb` zombie
-  - Command Bridge HTTP (localhost) para que el backend MCP invoque acciones de la extension
-- Nota: `FlashRunner` existe en codigo pero no esta expuesto en `package.json` ni como comando registrado. Los flujos `Flash`, `Flash+Run` y `Validate` mencionados en el README no son accesibles desde la UI actualmente.
+  - Command Bridge HTTP (localhost) para backend MCP
+  - Toggle MCP async con verificacion de liberacion de hardware
+  - Watchdog 30s en UI para recuperacion de spinner
+  - Memory con hints contextuales (cleaned/build-failed/none)
 
 ### 1.3 Documentacion
 
-- Estado: `ACTUALIZADO` (revisado 2026-03-10)
-- README profesional publicado en `README.md`.
-- CHANGELOG inicial creado en `CHANGELOG.md`.
-- Estructura, ejemplo de config y notas sincronizados con código real.
+- Estado: `SINCRONIZADO` (2026-03-15)
+- README, CHANGELOG y tracker alineados con codigo real.
 
-## 1.4 Hito de Release
+### 1.4 Hito de Release
 
-- Tag Git creado: `v0.1.0`
-- Significado: baseline funcional del MVP para seguir refinando sin perder un punto estable de referencia
-- Siguiente objetivo: cerrar requisitos de estabilizacion funcional y preparar cambios incrementales sobre la base `0.1.x`
+- Tag Git: `v0.1.0` — baseline funcional del MVP
+- Siguiente objetivo: proteccion comercial + publicacion
 
-## 1.5 Foco Actual de Estabilizacion (2026-03-11)
+### 1.5 Estabilizacion Funcional
 
-- Estado: `EN DEFINICION`
-- Objetivo: convertir bugs de flujo/UX observados en requisitos verificables antes de implementar.
-- Documento de trabajo asociado: `STABILIZATION_REQUIREMENTS.md`.
-- Principio acordado: no fijar comportamiento como definitivo cuando todavia hay dudas funcionales o tecnicas.
+- Estado: `COMPLETADA` (2026-03-15)
+- Todos los requisitos de STABILIZATION_REQUIREMENTS.md implementados y verificados:
+  - [x] MCP OFF verifica liberacion de hardware (async + waitForDebugSessionEnd + warning)
+  - [x] Memory con semantica post-clean (hints contextuales + placeholders diferenciados)
+  - [x] Debug auto-build (si falla, no continua)
+  - [x] Deteccion e2 Studio abierto (Get-Process + dialogo confirmacion)
+  - [x] Spinner recovery (watchdog 30s)
+  - [x] Flash expuesto como comando (build + flash + run, sin sesion de debug)
 
-## 2. Ultimas Decisiones (2026-03-06)
+---
 
-### 2.1 Publicacion publica en VS Code Marketplace
+## 2. Proteccion Comercial
 
-Decisiones confirmadas:
+### 2.1 Diagnostico Actual (2026-03-15)
 
-1. Publicar extension de forma publica con publisher oficial.
-2. Flujo base de release:
-   - `npm install`
-   - `npm run compile`
-   - `npx @vscode/vsce login <publisher>`
-   - `npx @vscode/vsce publish`
-3. Versionado por semver para updates (`patch/minor/major`).
-4. Completar metadata antes de publicar:
-   - `repository`, `homepage`, `bugs`, `keywords`
-   - `README.md`, `CHANGELOG.md` en carpeta de extension
+| Superficie | Estado | Riesgo |
+|------------|--------|--------|
+| Backend Python | `.py` en claro | Copia directa trivial |
+| Extension JS | Bundle esbuild legible | Ingenieria inversa facil |
+| Sourcemap | Excluido del build de produccion y del `.vsix` | Sigue visible solo en desarrollo/watch |
+| Licencia | Propietaria en package + LICENSE.txt | Riesgo legal mitigado; falta enforcement tecnico |
+| Licenciamiento | No implementado | Sin trial, sin activacion, sin validacion |
+| Secretos | No hay secretos en cliente | Correcto, pero sin logica de gating |
 
-### 2.2 Modelo Comercial Freemium (sin costes cloud LLM)
+### 2.2 Arquitectura de Proteccion — Capas
 
-Decisiones confirmadas:
+**Principio**: no existe blindaje absoluto en cliente. Objetivo = `friccion razonable` + valor comercial protegido por capas.
 
-1. Trial gratuito de `14 dias`.
-2. Licencia perpetua objetivo: `40 EUR` (rango valido `39-49 EUR`).
-3. Monetizacion de sostenibilidad: `upgrade de major version` (ej. v1 perpetua, upgrade opcional a v2).
-4. Marketplace no cobra licencias directamente: la venta debe hacerse fuera.
-5. Checkout recomendado: `Lemon Squeezy` o `Paddle` (VAT UE/facturacion/fraude).
+#### Capa 1: Licencia legal (imprescindible, sin codigo)
 
-## 2.3 Requisitos Abiertos de Estabilizacion (2026-03-11)
+- Cambiar `MIT` a licencia propietaria o `BSL-1.1` (Business Source License) antes de publicar.
+- Definir terminos claros: uso personal gratuito, uso comercial requiere licencia Pro.
+- Registrar copyright en README y package.json.
 
-Estado actualizado a 2026-03-15 tras verificacion contra codigo:
+#### Capa 2: Eliminacion de sourcemaps (inmediata, sin coste)
 
-1. **IMPLEMENTADO** — `toggleMcpServer` es ahora `async`: espera `waitForDebugSessionEnd(5000)` antes de actualizar UI/mcp.json. Si timeout, muestra warning explicito.
-2. **IMPLEMENTADO** — `refreshMemory(hint)` acepta hint contextual. Placeholders diferenciados: `cleaned` → "Build artifacts cleaned...", `build-failed` → "Last build failed...", default → "No memory data available...".
-3. **IMPLEMENTADO** — `Debug` lanza build automatica antes de depurar. Si falla, avisa y no continua. Codigo en `extension.ts` case `"debug"`.
-4. **IMPLEMENTADO** — `isE2StudioRunning()` via PowerShell `Get-Process -Name 'e2studio'`. `warnIfE2StudioOpen()` muestra dialogo de confirmacion antes de debug.
-5. **IMPLEMENTADO** — `setBusy(true)` incluye watchdog de 30s que auto-limpia el spinner si ningun path llama `setBusy(false)`. Previene bloqueo permanente de UI.
+- Quitar `--sourcemap` del script `compile` de esbuild para produccion.
+- Mantener sourcemaps solo en modo `watch`/desarrollo.
+- Excluir `*.map` en `.vscodeignore` para que no entren en el `.vsix`.
 
-## 2.4 Decisiones Confirmadas de Estabilizacion (2026-03-11)
+#### Capa 3: Ofuscacion del bundle JS (friccion media)
 
-1. `MCP OFF` debe liberar siempre el hardware aunque implique cerrar sesiones de debug abiertas por la extension.
-2. `Debug` debe lanzar build automatica antes de depurar; si falla, debe avisar y no continuar.
-3. La seccion `Memory` debe mostrarse en el panel, incluso vacia, con estados visibles.
-4. Si se detecta e2 Studio abierto, debe pedirse confirmacion antes de continuar.
-5. El alcance inicial recomendado para esa deteccion es `proceso abierto`, tratado como señal `best effort`.
+- Usar `esbuild-plugin-obfuscator` o `javascript-obfuscator` como paso post-build.
+- Scope: minify + mangle + control flow flattening en el bundle de produccion.
+- No es defensa definitiva pero sube el coste de analisis de horas a dias.
 
-## 3. Arquitectura de Licenciamiento Aprobada
+#### Capa 4: Empaquetado del backend Python (friccion alta)
 
-### 3.1 Activacion
+- Compilar `src/e2studio_mcp/` a binario con `Nuitka` (produce `.exe` standalone).
+- El MCP server se invocaria como `e2studio-mcp.exe` en vez de `py -m e2studio_mcp`.
+- Elimina acceso directo al codigo fuente Python.
+- Alternativa menor: `PyInstaller` (mas facil, menos proteccion).
 
-- Metodo: `email + license key`
-- Validacion:
-  - Online al activar
-  - Cache local firmada para uso offline temporal
+#### Capa 5: Licenciamiento con backend remoto (proteccion real)
 
-### 3.2 Offline / Revalidacion
+- Trial de 14 dias con inicio automatico en primer uso.
+- Activacion: `email + license key` validados contra backend remoto.
+- Cache local firmada (HMAC) con TTL de 7 dias para uso offline.
+- Revalidacion online al expirar TTL. Si falla: modo degradado (solo funciones Free).
+- Checkout externo via `Lemon Squeezy` o `Paddle` (VAT/facturacion/fraude).
+- **Ningun secreto critico en el cliente**. La clave de firma/validacion vive en el backend.
 
-- TTL recomendado para cache: `7 dias`
-- Al expirar TTL: intentar revalidacion online
-- Si falla conectividad: mantener modo degradado controlado
+#### Capa 6: Segmentacion funcional Free/Pro (gating)
 
-### 3.3 Trial
+- **Free** (sin limite de tiempo):
+  - Build/Clean/Rebuild
+  - Panel lateral (proyecto, config, memory)
+  - `list_projects`, `get_project_config`, `get_build_size`, `get_map_summary`
+- **Pro** (requiere licencia activa):
+  - Flash
+  - Debug (build + flash + debug session)
+  - Consola virtual ADM
+  - `debug_start`, `debug_stop`, `get_adm_log`
+  - `get_linker_sections` (detalle avanzado de secciones)
+- **Gating**: las funciones Pro comprueban estado de licencia antes de ejecutar. Si no hay licencia activa, muestran CTA de activacion.
 
-- Inicio automatico en primer uso
-- Persistencia:
-  - `globalState` de VS Code
-  - respaldo local firmado
-- UX requerida:
-  - dias restantes visibles
-  - CTA claro: `Activar licencia`
+### 2.3 Prioridad de Implementacion
 
-### 3.4 Segmentacion funcional
+| Orden | Capa | Esfuerzo | Impacto |
+|-------|------|----------|---------|
+| 1 | Licencia legal (cambiar MIT) | Minimo | Bloquea publicacion |
+| 2 | Eliminar sourcemaps en produccion | Minimo | Elimina reconstruccion trivial |
+| 3 | Licenciamiento con backend (trial + activacion + gating) | Alto | Proteccion real del modelo de negocio |
+| 4 | Ofuscacion del bundle JS | Bajo | Sube coste de ingenieria inversa |
+| 5 | Empaquetado Python a binario | Medio | Protege backend de copia directa |
 
-- Free:
-  - funciones basicas de productividad
-- Pro:
-  - flash/debug avanzado
-  - consola pro
-  - reportes / extras avanzados
+---
+
+## 3. Modelo Comercial
+
+### 3.1 Pricing
+
+| Segmento | Precio |
+|----------|--------|
+| Early adopters | 29 EUR |
+| Precio normal | 40 EUR (rango valido 39-49 EUR) |
+| Upgrade major (v1→v2) | 15-25 EUR |
+
+### 3.2 Publicacion Marketplace
+
+- [x] Cambiar licencia a propietaria/BSL antes de publicar.
+- [ ] Completar metadata: `repository`, `homepage`, `bugs`, `keywords`.
+- [ ] Completar assets: icono, banner, screenshots.
+- [ ] Crear publisher `PuertOcho` y PAT en Azure DevOps.
+- [ ] Actualizar entorno de release a Node >= 18 (con Node 16.13.0 `vsce package` falla por `ReadableStream is not defined`).
+- [ ] Ejecutar flujo de release: `npm run compile:prod` → `vsce package` → `vsce publish`.
+- [ ] Mantener versionado semver para updates.
+
+---
 
 ## 4. Riesgos y Mitigaciones
 
-1. Licencia actual en extension: `MIT`.
-- Riesgo: conflicto legal/comercial si hay funciones de pago.
-- Accion: evaluar cambio a licencia propietaria o dual para la extension.
+| Riesgo | Probabilidad | Mitigacion |
+|--------|-------------|------------|
+| Copia directa del codigo Python | Alta (`.py` en claro) | Nuitka a binario (Capa 4) |
+| Ingenieria inversa del JS | Media (bundle legible) | Quitar sourcemaps (Capa 2) + ofuscar (Capa 3) |
+| Bypass de trial por manipulacion de fechas | Media | Firma HMAC + revalidacion remota (Capa 5) |
+| Crack local del gating | Baja-media | Gating en backend para funciones criticas si viable |
+| Redistribucion del `.vsix` | Baja | Licencia legal + license key por maquina (Capa 1+5) |
+| Secretos expuestos en cliente | Nula actualmente | No embutir secretos. Validacion vive en backend |
+| Copia/redistribucion pese a licencia propietaria | Media | Licencia legal + license key + gating (Capas 1+5) |
 
-2. Manipulacion local de fechas/estado trial.
-- Riesgo: bypass de trial.
-- Accion: no depender solo de fecha local; usar firma + verificacion remota.
+---
 
-3. Secretos en cliente.
-- Riesgo: exposicion de claves de firma o logica sensible.
-- Accion: no embutir secretos criticos en frontend; usar backend minimo de validacion.
+## 5. Backlog Priorizado
 
-4. Pirateria inevitable en cliente local.
-- Riesgo: cracks.
-- Accion: objetivo de seguridad realista: `friccion razonable`, no blindaje absoluto.
+### P0 — Proteccion Pre-Publicacion (bloquea Marketplace)
 
-## 5. Pricing Propuesto
+- [x] Cambiar licencia de `MIT` a propietaria/BSL en `package.json`, README y LICENSE.txt.
+- [x] Eliminar sourcemaps del build de produccion (script `compile:prod` sin `--sourcemap`, con `--minify`).
+- [x] Añadir `*.map` a `.vscodeignore` (ya estaba desde el inicio).
+- [ ] Completar metadata de `package.json` (`repository`, `homepage`, `bugs`, `keywords`).
+- [ ] Completar assets de marketplace (icono, banner, screenshots para listing).
+- [ ] Crear publisher `PuertOcho` y PAT en Azure DevOps.
 
-- Early adopters: `29 EUR`
-- Precio normal: `39-49 EUR` (objetivo actual: `40 EUR`)
-- Upgrade major: `15-25 EUR`
+### P1 — Licenciamiento MVP
 
-## 6. Backlog Priorizado
+- [ ] Implementar modulo de licencia en extension (`licenseManager.ts`):
+  - [ ] Trial 14 dias con inicio automatico.
+  - [ ] Activacion por email + license key.
+  - [ ] Cache local firmada (HMAC) con TTL 7 dias.
+  - [ ] Revalidacion online al expirar.
+  - [ ] Modo degradado (Free) si no hay licencia.
+- [ ] Implementar backend minimo de validacion (endpoint `POST /validate`).
+- [ ] Implementar gating Free/Pro en comandos de la extension.
+- [ ] UX de licencia en panel:
+  - [ ] Dias restantes de trial visibles.
+  - [ ] CTA `Activar licencia` / `Comprar`.
+  - [ ] Estado de licencia en status bar.
+- [ ] Definir proveedor checkout (`Lemon Squeezy` o `Paddle`).
 
-### P0 - Publicacion Marketplace
+### P2 — Hardening de Distribucion
 
-1. Completar metadata de `vscode-extension/package.json`.
-2. Completar assets de marketplace.
-3. Crear publisher y PAT.
-4. Definir estrategia de licencia de uso y encaje legal/comercial antes de publicar.
-5. Publicar en Marketplace tomando `v0.1.0` como baseline tecnico cuando el esquema de licencia este cerrado.
+- [ ] Ofuscar bundle JS de produccion (esbuild + javascript-obfuscator).
+- [ ] Empaquetar backend Python con Nuitka a `.exe` standalone.
+- [ ] Actualizar `mcp.json` template para invocar binario en vez de `py -m`.
+- [ ] Crear script de build de release: compile → ofuscar → package → publish.
 
-### P0.1 - Estabilizacion post-MVP
+### P3 — Hardening Comercial
 
-1. Cerrar cambios de refinamiento sobre `master` y preparar `v0.1.1` si procede.
-2. Evitar artefactos locales en Git (`stderr.txt`, `.bridge-port` y logs similares).
-3. Revisar smoke/integration flows del MCP server y de la extension.
-4. Validar con varios proyectos y varios `.launch` que la seleccion del plugin replica el comportamiento de e2 Studio.
-5. ~~Cerrar especificacion funcional de `Toggle MCP OFF` y su efecto real sobre sesion debug/hardware.~~ **IMPLEMENTADO** — async + waitForDebugSessionEnd + warning.
-6. ~~Cerrar especificacion UX/datos de la seccion `Memory` (semantica tras `clean`, estados visuales).~~ **IMPLEMENTADO** — hint contextual + placeholders diferenciados.
-7. ~~Cerrar politica de `Debug sin build previa`.~~ **IMPLEMENTADO** — auto-build antes de debug ya activo.
-8. ~~Implementar deteccion/aviso cuando e2 Studio este abierto.~~ **IMPLEMENTADO** — Get-Process + dialogo confirmacion.
-9. ~~Validar exhaustivamente que errores de UI siempre cierran spinner.~~ **IMPLEMENTADO** — watchdog 30s en setBusy(true).
-10. ~~Decidir si `Flash`/`Flash+Run`/`Validate` se exponen como comandos en `package.json`.~~ **IMPLEMENTADO** — Solo `Flash` expuesto (comando `e2mcp.flash` + boton webview). `Flash+Run` descartado (equivale a Debug). `Validate` no implementado.
+- [ ] Definir politica de upgrades mayores (v1 → v2).
+- [ ] Implementar telemetria opt-in minima para conversion/uso.
+- [ ] Crear pagina comercial/landing con documentacion de planes.
+- [ ] Vincular license key a maquina (machine fingerprint).
 
-### P1 - Licenciamiento MVP
+### P0.1 — Estabilizacion post-MVP (COMPLETADO)
 
-1. Definir proveedor checkout (`Lemon Squeezy` o `Paddle`).
-2. Implementar modulo de licencia en extension (`trial + activate + validate`).
-3. Implementar endpoint minimo de validacion.
-4. Pantalla UX de activacion y estado de trial.
+Todos los items cerrados a 2026-03-15:
 
-### P2 - Hardening Comercial
+- [x] Toggle MCP OFF verifica liberacion HW — async + waitForDebugSessionEnd.
+- [x] Memory semantica tras clean — hints contextuales.
+- [x] Debug auto-build — si falla, no continua.
+- [x] Deteccion e2 Studio abierto — Get-Process + dialogo.
+- [x] Spinner recovery — watchdog 30s.
+- [x] Flash expuesto como comando — build + flash + run.
+- [ ] Validacion en HW: Flash con `runAfterFlash`, smoke test multi-proyecto.
 
-1. Politica de upgrades mayores (v1 -> v2).
-2. Telemetria opt-in minima para conversion/uso.
-3. Pagina comercial/documentacion de planes.
+---
 
-## 7. Proximos Entregables
+## 6. Proximos Pasos Inmediatos
 
-1. `GO_TO_MARKET_CHECKLIST.md` con pasos operativos de publicacion.
-2. `LICENSING_TECH_SPEC.md` con flujo tecnico detallado (trial/activacion/cache/revalidacion).
-3. `STABILIZATION_REQUIREMENTS.md` con bugs, criterios de aceptacion y preguntas abiertas de UX/flujo.
-4. Definicion del modelo de licencia de uso para extension/publicacion.
-5. Implementacion de comandos UI: `Activar licencia`, `Ver estado de licencia`, `Comprar`.
+- [x] Cambiar licencia y eliminar sourcemaps (P0, items 1-3).
+- [ ] Actualizar Node del entorno release a >= 18 para que `vsce package` funcione.
+- [ ] Una vez P0 cerrado: implementar licenciamiento (P1) antes de publicar.
+- [ ] Publicar en Marketplace solo cuando P0 + P1 esten cerrados.

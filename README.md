@@ -231,4 +231,7 @@ py -3 tests/smoke_test.py
 
 ## Licencia
 
-MIT (la metadata del paquete de extensión está en `vscode-extension/package.json`).
+Software propietario. Todos los derechos reservados.
+
+El código fuente de este repositorio no concede permiso de redistribución, sublicencia ni explotación comercial.
+La metadata del paquete de extensión referencia la licencia incluida en [vscode-extension/LICENSE.txt](vscode-extension/LICENSE.txt).

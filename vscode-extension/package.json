@@ -4,7 +4,7 @@
   "description": "Renesas RX development: virtual console, project selector, build/flash integration for E2 Lite / E1 / J-Link",
   "version": "0.1.0",
   "publisher": "PuertOcho",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE.txt",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -110,8 +110,9 @@
   },
   "scripts": {
     "compile": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --sourcemap",
+    "compile:prod": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --minify",
     "watch": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --sourcemap --watch",
-    "package": "vsce package",
+    "package": "npm run compile:prod && vsce package",
     "lint": "tsc --noEmit"
   },
   "devDependencies": {
