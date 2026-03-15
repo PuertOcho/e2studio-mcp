@@ -20,7 +20,7 @@ export class CommandBridge implements vscode.Disposable {
   private portFilePath: string;
 
   constructor(
-    private workspace: string,
+    workspace: string,
     private buildRunner: BuildRunner,
     private debugProvider: DebugProvider,
     private viewProvider: E2McpViewProvider,

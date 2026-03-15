@@ -5,15 +5,6 @@ import { ExtensionConfig } from "./config";
 import { parseLaunchFile, findLaunchFile, findRunLaunchFile } from "./launchParser";
 import { E2McpViewProvider } from "./webviewProvider";
 
-/** Map debugger dropdown values to serverParam flag values. */
-const DEBUGGER_MAP: Record<string, string> = {
-  E2LITE: "E2Lite",
-  E1: "E1",
-  E2: "E2",
-  JLINK: "JLink",
-  SIMULATOR: "Sim",
-};
-
 /**
  * Provides dynamic debug configurations for `renesas-hardware` sessions.
  *

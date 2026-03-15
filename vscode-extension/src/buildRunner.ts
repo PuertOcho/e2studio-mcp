@@ -259,7 +259,7 @@ export class BuildRunner implements vscode.Disposable {
   }
 
   /** Parse CCRX compiler/linker output for errors and warnings. */
-  private parseDiagnostics(output: string, projPath: string): BuildDiagnostic[] {
+  private parseDiagnostics(output: string, _projPath: string): BuildDiagnostic[] {
     const result: BuildDiagnostic[] = [];
 
     // Compiler: "file.c", line 42: E0520: message

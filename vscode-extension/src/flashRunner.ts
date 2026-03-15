@@ -25,11 +25,9 @@ export interface FlashResult {
  */
 export class FlashRunner implements vscode.Disposable {
   private flashChannel: vscode.OutputChannel;
-  private config: ExtensionConfig;
   private flashing = false;
 
-  constructor(config: ExtensionConfig) {
-    this.config = config;
+  constructor(_config: ExtensionConfig) {
     this.flashChannel = vscode.window.createOutputChannel("E2 MCP Flash");
   }
 
