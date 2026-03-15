@@ -125,6 +125,31 @@
           "default": "",
           "description": "Override the folder that contains the Renesas e2 Studio projects"
         },
+        "e2mcp.e2studioPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to e2 Studio `eclipse` folder (e.g. `C:\\Renesas\\e2_studio\\eclipse`). Auto-detected if empty."
+        },
+        "e2mcp.ccrxPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to CCRX compiler `bin` folder (e.g. `C:\\Program Files (x86)\\Renesas\\RX\\3_7_0\\bin`). Auto-detected if empty."
+        },
+        "e2mcp.makePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to GNU Make folder bundled with e2 Studio. Auto-detected if empty."
+        },
+        "e2mcp.debugToolsPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to Renesas `DebugComp/RX` folder containing `e2-server-gdb`. Auto-detected if empty."
+        },
+        "e2mcp.python3BinPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to Renesas embedded Python3 `bin` folder. Auto-detected if empty."
+        },
         "e2mcp.pythonPath": {
           "type": "string",
           "default": "py",

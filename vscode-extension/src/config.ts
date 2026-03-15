@@ -27,6 +27,89 @@ export interface ExtensionConfig {
   };
 }
 
+/** Resolve a path from: VS Code setting > JSON value > auto-detect. */
+function resolvePath(settingKey: string, jsonValue: string | undefined, autoDetect: () => string): string {
+  const fromSetting = vscode.workspace
+    .getConfiguration("e2mcp")
+    .get<string>(settingKey, "")
+    .trim();
+  if (fromSetting) return fromSetting;
+  if (jsonValue) return jsonValue;
+  return autoDetect();
+}
+
+/** Auto-detect DebugComp/RX under ~/.eclipse/com.renesas.platform_{id}/DebugComp/RX */
+function detectDebugToolsPath(): string {
+  const eclipseDir = path.join(os.homedir(), ".eclipse");
+  try {
+    const platforms = fs.readdirSync(eclipseDir)
+      .filter(d => d.startsWith("com.renesas.platform_"))
+      .sort().reverse();
+    for (const dir of platforms) {
+      const candidate = path.join(eclipseDir, dir, "DebugComp", "RX");
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch { /* not installed */ }
+  return "";
+}
+
+/** Auto-detect Renesas embedded Python3 under e2 Studio plugins. */
+function detectPython3BinPath(e2studioPath: string): string {
+  if (!e2studioPath) return "";
+  const pluginsDir = path.join(e2studioPath, "plugins");
+  try {
+    const dirs = fs.readdirSync(pluginsDir)
+      .filter(d => d.startsWith("com.renesas.python3.win32"))
+      .sort().reverse();
+    for (const dir of dirs) {
+      const bin = path.join(pluginsDir, dir, "bin");
+      if (fs.existsSync(bin)) return bin;
+    }
+  } catch { /* not installed */ }
+  return "";
+}
+
+/** Auto-detect CCRX compiler: newest version under Program Files (x86)\Renesas\RX. */
+function detectCcrxPath(): string {
+  const base = path.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Renesas", "RX");
+  try {
+    const versions = fs.readdirSync(base).sort().reverse();
+    for (const ver of versions) {
+      const bin = path.join(base, ver, "bin");
+      if (fs.existsSync(path.join(bin, "ccrx.exe"))) return bin;
+    }
+  } catch { /* not installed */ }
+  return "";
+}
+
+/** Auto-detect e2 Studio eclipse folder. */
+function detectE2studioPath(): string {
+  const candidates = [
+    "C:\\Renesas\\e2_studio\\eclipse",
+    "C:\\Renesas\\e2studio\\eclipse",
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return "";
+}
+
+/** Auto-detect GNU make bundled with e2 Studio plugins. */
+function detectMakePath(e2studioPath: string): string {
+  if (!e2studioPath) return "";
+  const pluginsDir = path.join(e2studioPath, "plugins");
+  try {
+    const dirs = fs.readdirSync(pluginsDir)
+      .filter(d => d.startsWith("com.renesas.ide.exttools.gnumake"))
+      .sort().reverse();
+    for (const dir of dirs) {
+      const mkDir = path.join(pluginsDir, dir, "mk");
+      if (fs.existsSync(path.join(mkDir, "make.exe"))) return mkDir;
+    }
+  } catch { /* not installed */ }
+  return "";
+}
+
 function resolveBuildJobs(rawValue: unknown): number {
   const configured = Number(rawValue ?? 0);
   if (Number.isFinite(configured) && configured > 0) {
@@ -111,6 +194,13 @@ export function loadConfig(): ExtensionConfig {
   const defaultProjectRootPath = raw.workspace ?? "";
   const projectRootPath = configuredProjectsPath || defaultProjectRootPath;
 
+  // Resolve toolchain paths: VS Code setting > e2studio-mcp.json > auto-detect
+  const e2studioPath = resolvePath("e2studioPath", raw.toolchain?.e2studioPath, detectE2studioPath);
+  const ccrxPath = resolvePath("ccrxPath", raw.toolchain?.ccrxPath, detectCcrxPath);
+  const makePath = resolvePath("makePath", raw.toolchain?.makePath, () => detectMakePath(e2studioPath));
+  const debugToolsPath = resolvePath("debugToolsPath", raw.flash?.debugToolsPath, detectDebugToolsPath);
+  const python3BinPath = resolvePath("python3BinPath", raw.flash?.python3BinPath, () => detectPython3BinPath(e2studioPath));
+
   return {
     workspace: raw.workspace ?? "",
     projectRootPath,
@@ -119,16 +209,16 @@ export function loadConfig(): ExtensionConfig {
     buildMode: raw.buildMode ?? "make",
     buildJobs: resolveBuildJobs(raw.buildJobs),
     toolchain: {
-      ccrxPath: raw.toolchain?.ccrxPath ?? "",
-      e2studioPath: raw.toolchain?.e2studioPath ?? "",
-      makePath: raw.toolchain?.makePath ?? "",
+      ccrxPath,
+      e2studioPath,
+      makePath,
     },
     flash: {
       debugger: raw.flash?.debugger ?? "E2Lite",
       device: raw.flash?.device ?? "R5F5651E",
       gdbPort: raw.flash?.gdbPort ?? 61234,
-      debugToolsPath: raw.flash?.debugToolsPath ?? "",
-      python3BinPath: raw.flash?.python3BinPath ?? "",
+      debugToolsPath,
+      python3BinPath,
       gdbExecutable: raw.flash?.gdbExecutable ?? "rx-elf-gdb",
       inputClock: raw.flash?.inputClock ?? "24.0",
       idCode: raw.flash?.idCode ?? "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
