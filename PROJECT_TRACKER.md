@@ -2,7 +2,7 @@
 
 - Proyecto: `e2Studio_2024_workspace/e2studio-mcp`
 - Stack: Python (`mcp`) + VS Code Extension (TypeScript)
-- Ultima actualizacion: 2026-03-11
+- Ultima actualizacion: 2026-03-15
 - Estado global: `MVP funcional` tagged como `v0.1.0` + fase activa de estabilizacion funcional/UX
 
 ## 1. Estado Tecnico
@@ -13,13 +13,14 @@
 - Tools disponibles:
   - Build: `build_project`, `clean_project`, `rebuild_project`, `get_build_status`, `get_build_size`
   - Project/Map: `list_projects`, `get_project_config`, `get_map_summary`, `get_linker_sections`
-  - Flash/Debug: `flash_firmware`, `debug_connect`, `debug_disconnect`, `debug_status`
-  - Debug: `get_adm_log`
+  - Debug: `debug_start`, `debug_stop`, `debug_status`
+  - Console: `get_adm_log`
 - Resources MCP:
   - `e2studio://build/log`
   - `e2studio://debug/adm/log`
   - `e2studio://project/memory`
   - `e2studio://project/config`
+  - `e2studio://activity/log`
 
 ### 1.2 Extension VS Code (`vscode-extension`)
 
@@ -28,9 +29,12 @@
   - Panel lateral `E2 MCP`
   - Seleccion de proyecto/debugger/buildConfig
   - Seleccion explicita de `.launch` o modo auto-detect
-  - Comandos build/clean/rebuild/flash
-  - Integracion con debug `renesas-hardware`
+  - Comandos registrados: `build`, `clean`, `rebuild`, `stopDebug`, `openConsole`, `selectProject`, `selectDebugger`, `selectLaunch`
+  - Integracion con debug `renesas-hardware` (build automatica previa + lanzamiento de sesion)
   - Consola virtual ADM en `Output` (sin duplicacion en el panel)
+  - Deteccion de probe USB y procesos `e2-server-gdb` zombie
+  - Command Bridge HTTP (localhost) para que el backend MCP invoque acciones de la extension
+- Nota: `FlashRunner` existe en codigo pero no esta expuesto en `package.json` ni como comando registrado. Los flujos `Flash`, `Flash+Run` y `Validate` mencionados en el README no son accesibles desde la UI actualmente.
 
 ### 1.3 Documentacion
 
@@ -81,13 +85,13 @@ Decisiones confirmadas:
 
 ## 2.3 Requisitos Abiertos de Estabilizacion (2026-03-11)
 
-Pendientes incorporados al backlog documental antes de implementacion:
+Estado actualizado a 2026-03-15 tras verificacion contra codigo:
 
-1. Cerrar semantica final de `Toggle MCP OFF` respecto al estado UI cuando la liberacion real del hardware falle.
-2. Definir ciclo de vida visible de la seccion `Memory` y su relacion con `build`, `clean` y `debug`.
-3. Cerrar si `Debug` debe auto-build siempre o solo cuando falten/invaliden artefactos.
-4. Evaluar deteccion de e2 Studio abierto y concretar el alcance exacto de la confirmacion previa.
-5. Garantizar que errores de `Build`, `Flash` o `Debug` no dejen la UI en estado bloqueado/cargando indefinidamente.
+1. **IMPLEMENTADO** — `toggleMcpServer` es ahora `async`: espera `waitForDebugSessionEnd(5000)` antes de actualizar UI/mcp.json. Si timeout, muestra warning explicito.
+2. **IMPLEMENTADO** — `refreshMemory(hint)` acepta hint contextual. Placeholders diferenciados: `cleaned` → "Build artifacts cleaned...", `build-failed` → "Last build failed...", default → "No memory data available...".
+3. **IMPLEMENTADO** — `Debug` lanza build automatica antes de depurar. Si falla, avisa y no continua. Codigo en `extension.ts` case `"debug"`.
+4. **IMPLEMENTADO** — `isE2StudioRunning()` via PowerShell `Get-Process -Name 'e2studio'`. `warnIfE2StudioOpen()` muestra dialogo de confirmacion antes de debug.
+5. **IMPLEMENTADO** — `setBusy(true)` incluye watchdog de 30s que auto-limpia el spinner si ningun path llama `setBusy(false)`. Previene bloqueo permanente de UI.
 
 ## 2.4 Decisiones Confirmadas de Estabilizacion (2026-03-11)
 
@@ -168,14 +172,15 @@ Pendientes incorporados al backlog documental antes de implementacion:
 ### P0.1 - Estabilizacion post-MVP
 
 1. Cerrar cambios de refinamiento sobre `master` y preparar `v0.1.1` si procede.
-2. Evitar artefactos locales en Git (`stderr.txt` y logs similares).
+2. Evitar artefactos locales en Git (`stderr.txt`, `.bridge-port` y logs similares).
 3. Revisar smoke/integration flows del MCP server y de la extension.
 4. Validar con varios proyectos y varios `.launch` que la seleccion del plugin replica el comportamiento de e2 Studio.
-5. Cerrar especificacion funcional de `Toggle MCP OFF` y su efecto real sobre sesion debug/hardware.
-6. Cerrar especificacion UX/datos de la seccion `Memory`.
-7. Cerrar politica de `Debug sin build previa`.
-8. Confirmar estrategia de deteccion/aviso cuando e2 Studio este abierto.
-9. Corregir el contrato de UI para que cualquier error cierre spinner y re-habilite acciones.
+5. ~~Cerrar especificacion funcional de `Toggle MCP OFF` y su efecto real sobre sesion debug/hardware.~~ **IMPLEMENTADO** — async + waitForDebugSessionEnd + warning.
+6. ~~Cerrar especificacion UX/datos de la seccion `Memory` (semantica tras `clean`, estados visuales).~~ **IMPLEMENTADO** — hint contextual + placeholders diferenciados.
+7. ~~Cerrar politica de `Debug sin build previa`.~~ **IMPLEMENTADO** — auto-build antes de debug ya activo.
+8. ~~Implementar deteccion/aviso cuando e2 Studio este abierto.~~ **IMPLEMENTADO** — Get-Process + dialogo confirmacion.
+9. ~~Validar exhaustivamente que errores de UI siempre cierran spinner.~~ **IMPLEMENTADO** — watchdog 30s en setBusy(true).
+10. ~~Decidir si `Flash`/`Flash+Run`/`Validate` se exponen como comandos en `package.json`.~~ **IMPLEMENTADO** — Solo `Flash` expuesto (comando `e2mcp.flash` + boton webview). `Flash+Run` descartado (equivale a Debug). `Validate` no implementado.
 
 ### P1 - Licenciamiento MVP
 

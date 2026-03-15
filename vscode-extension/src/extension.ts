@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import * as cp from "child_process";
 import { ADMConsole } from "./admConsole";
 import { loadConfig, ExtensionConfig } from "./config";
 import { E2McpViewProvider } from "./webviewProvider";
 import { BuildRunner } from "./buildRunner";
 import { DebugProvider } from "./debugProvider";
+import { FlashRunner } from "./flashRunner";
 import { CommandBridge } from "./commandBridge";
 
 let admConsole: ADMConsole | undefined;
@@ -13,6 +15,7 @@ let config: ExtensionConfig | undefined;
 let viewProvider: E2McpViewProvider | undefined;
 let buildRunner: BuildRunner | undefined;
 let debugProvider: DebugProvider | undefined;
+let flashRunner: FlashRunner | undefined;
 let commandBridge: CommandBridge | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -58,6 +61,10 @@ export function activate(context: vscode.ExtensionContext): void {
   buildRunner = new BuildRunner(config);
   context.subscriptions.push(buildRunner);
 
+  // Flash runner
+  flashRunner = new FlashRunner(config);
+  context.subscriptions.push(flashRunner);
+
   // Webview sidebar panel
   viewProvider = new E2McpViewProvider(
     context.extensionUri,
@@ -71,7 +78,7 @@ export function activate(context: vscode.ExtensionContext): void {
               `[e2mcp] Project: ${args.project}`
             );
             if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-              disableMcpAndHardware(outputChannel);
+              await disableMcpAndHardware(outputChannel);
               vscode.window.showInformationMessage(
                 "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
               );
@@ -92,7 +99,7 @@ export function activate(context: vscode.ExtensionContext): void {
               `[e2mcp] Debugger: ${label}`
             );
             if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-              disableMcpAndHardware(outputChannel);
+              await disableMcpAndHardware(outputChannel);
               vscode.window.showInformationMessage(
                 "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
               );
@@ -104,7 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
             viewProvider?.setSelectedBuildConfig(args.config);
             context.workspaceState.update("e2mcp.buildConfig", args.config);
             if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-              disableMcpAndHardware(outputChannel);
+              await disableMcpAndHardware(outputChannel);
               vscode.window.showInformationMessage(
                 "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
               );
@@ -115,7 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
           viewProvider?.setSelectedLaunchFile(args?.launchFile ?? "");
           context.workspaceState.update("e2mcp.launchFile", args?.launchFile ?? "");
           if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-            disableMcpAndHardware(outputChannel);
+            await disableMcpAndHardware(outputChannel);
             vscode.window.showInformationMessage(
               "Configuration changed \u2014 hardware disconnected. Re-enable MCP to reconnect."
             );
@@ -129,6 +136,9 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         case "rebuild":
           vscode.commands.executeCommand("e2mcp.rebuild");
+          break;
+        case "flash":
+          vscode.commands.executeCommand("e2mcp.flash");
           break;
         case "debug": {
           if (debugProvider && config && buildRunner) {
@@ -144,6 +154,9 @@ export function activate(context: vscode.ExtensionContext): void {
               });
               break;
             }
+
+            // Best-effort: warn if e2 Studio IDE is open
+            if (!await warnIfE2StudioOpen()) break;
 
             viewProvider?.setBusy(true);
             const project = viewProvider?.currentProject || config.defaultProject;
@@ -193,7 +206,7 @@ export function activate(context: vscode.ExtensionContext): void {
           break;
         }
         case "toggleMcp":
-          toggleMcpServer(outputChannel);
+          await toggleMcpServer(outputChannel);
           break;
       }
     }
@@ -315,8 +328,10 @@ export function activate(context: vscode.ExtensionContext): void {
     viewProvider.setBusy(true);
     try {
       const result = await buildRunner.build(project, buildConfig, mode);
+      const hint = mode === "clean" ? "cleaned" as const
+        : result.success ? "none" as const : "build-failed" as const;
+      viewProvider.refreshMemory(hint);
       if (result.success) {
-        viewProvider.refreshMemory();
         viewProvider.updateWebview();
       }
     } finally {
@@ -334,7 +349,51 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("e2mcp.rebuild", () => runBuild("rebuild"))
   );
 
-  // Flash command
+  // Flash command (flash only, no debug session)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("e2mcp.flash", async () => {
+      if (!viewProvider || !buildRunner || !flashRunner || !config) return;
+
+      if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+        vscode.window.showWarningMessage("Cannot flash while a debug session is active. Stop the session first.");
+        return;
+      }
+
+      if (!await warnIfE2StudioOpen()) return;
+
+      const project = viewProvider.currentProject || config.defaultProject;
+      const buildConfig = viewProvider.currentBuildConfig || config.buildConfig;
+      const launchFile = viewProvider.currentLaunchFile || undefined;
+
+      viewProvider.setBusy(true);
+      try {
+        // Build first
+        const buildResult = await buildRunner.build(project, buildConfig, "build");
+        viewProvider.refreshMemory();
+        viewProvider.updateWebview();
+
+        if (!buildResult.success) {
+          vscode.window.showWarningMessage("Build failed. Flash was not started.");
+          return;
+        }
+
+        // Flash
+        const result = await flashRunner.flash(project, buildConfig, launchFile, { runAfterFlash: true });
+        if (result.success) {
+          const summary = `${result.bytesWritten ?? 0} bytes, verified=${result.verified ? "true" : "false"}`;
+          vscode.window.showInformationMessage(`Flash complete. ${summary}`);
+        } else {
+          vscode.window.showErrorMessage(`Flash failed: ${result.error ?? "unknown error"}`);
+        }
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Flash failed: ${e.message}`);
+      } finally {
+        viewProvider.setBusy(false);
+      }
+    })
+  );
+
+  // Stop debug command
   context.subscriptions.push(
     vscode.commands.registerCommand("e2mcp.stopDebug", () => {
       const session = vscode.debug.activeDebugSession;
@@ -393,12 +452,54 @@ function syncMcpToggleState(): void {
   } catch { /* ignore */ }
 }
 
+/** Wait for the active Renesas debug session to actually terminate. */
+function waitForDebugSessionEnd(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const session = vscode.debug.activeDebugSession;
+    if (!session || session.type !== "renesas-hardware") {
+      resolve(true);
+      return;
+    }
+    const timer = setTimeout(() => { disposable.dispose(); resolve(false); }, timeoutMs);
+    const disposable = vscode.debug.onDidTerminateDebugSession((ended) => {
+      if (ended.type === "renesas-hardware") {
+        clearTimeout(timer);
+        disposable.dispose();
+        resolve(true);
+      }
+    });
+  });
+}
+
+/** Best-effort detection: is the e2 Studio IDE running? */
+function isE2StudioRunning(): Promise<boolean> {
+  return new Promise((resolve) => {
+    cp.execFile("powershell", [
+      "-NoProfile", "-Command",
+      "!!(Get-Process -Name 'e2studio' -ErrorAction SilentlyContinue)",
+    ], { timeout: 3000 }, (_err, stdout) => {
+      resolve(stdout?.trim() === "True");
+    });
+  });
+}
+
+/** Warn user if e2 Studio appears open. Returns true to proceed, false to cancel. */
+async function warnIfE2StudioOpen(): Promise<boolean> {
+  const running = await isE2StudioRunning();
+  if (!running) return true;
+  const choice = await vscode.window.showWarningMessage(
+    "e2 Studio appears to be running. Using the debug probe from VS Code may cause conflicts.",
+    "Continue Anyway", "Cancel"
+  );
+  return choice === "Continue Anyway";
+}
+
 /**
  * Toggle MCP server state and manage hardware connection.
  * Disable: terminates debug session + stops ADM console + disables MCP server.
  * Enable: enables MCP server in mcp.json (VS Code restarts it, which reconnects HW).
  */
-function toggleMcpServer(outputChannel: vscode.OutputChannel): void {
+async function toggleMcpServer(outputChannel: vscode.OutputChannel): Promise<void> {
   const mcpJson = findMcpJson();
   if (!mcpJson) {
     vscode.window.showWarningMessage("Could not find .vscode/mcp.json");
@@ -414,33 +515,45 @@ function toggleMcpServer(outputChannel: vscode.OutputChannel): void {
     }
     const wasDisabled = !!server.disabled;
     if (wasDisabled) {
+      // Enable path — straightforward
       delete server.disabled;
-    } else {
-      server.disabled = true;
-    }
-    fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
-    const nowEnabled = wasDisabled;
-    viewProvider?.setMcpEnabled(nowEnabled);
-
-    if (nowEnabled) {
+      fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
+      viewProvider?.setMcpEnabled(true);
       outputChannel.appendLine("[e2mcp] MCP server enabled");
+      vscode.window.showInformationMessage("MCP server enabled.");
     } else {
-      outputChannel.appendLine("[e2mcp] MCP server disabled \u2014 disconnecting hardware...");
+      // Disable path — release hardware first, then update config
+      outputChannel.appendLine("[e2mcp] MCP server disabling \u2014 releasing hardware...");
       admConsole?.stop();
+
+      let hwReleased = true;
       if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-        vscode.debug.stopDebugging();
+        await vscode.debug.stopDebugging();
+        hwReleased = await waitForDebugSessionEnd(5000);
+      }
+
+      server.disabled = true;
+      fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
+      viewProvider?.setMcpEnabled(false);
+
+      if (hwReleased) {
+        outputChannel.appendLine("[e2mcp] MCP server disabled \u2014 hardware released");
+        vscode.window.showInformationMessage("MCP server disabled \u2014 hardware released.");
+      } else {
+        outputChannel.appendLine("[e2mcp] MCP server disabled \u2014 WARNING: debug session did not terminate within 5 s");
+        vscode.window.showWarningMessage(
+          "MCP server disabled, but the debug session did not terminate in time. " +
+          "The hardware probe may still be locked \u2014 check the Debug panel or restart VS Code."
+        );
       }
     }
-
-    const newState = nowEnabled ? "enabled" : "disabled";
-    vscode.window.showInformationMessage(`MCP server ${newState}.`);
   } catch (e: any) {
     vscode.window.showErrorMessage(`Failed to toggle MCP: ${e.message}`);
   }
 }
 
 /** Force-disable MCP and disconnect hardware (used on config changes). */
-function disableMcpAndHardware(outputChannel: vscode.OutputChannel): void {
+async function disableMcpAndHardware(outputChannel: vscode.OutputChannel): Promise<void> {
   const mcpJson = findMcpJson();
   if (!mcpJson) return;
   try {
@@ -448,14 +561,17 @@ function disableMcpAndHardware(outputChannel: vscode.OutputChannel): void {
     const data = JSON.parse(text);
     const server = data?.servers?.["e2studio-mcp"];
     if (!server || server.disabled) return;
+
+    admConsole?.stop();
+    if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+      await vscode.debug.stopDebugging();
+      await waitForDebugSessionEnd(5000);
+    }
+
     server.disabled = true;
     fs.writeFileSync(mcpJson, JSON.stringify(data, null, 2) + "\n", "utf-8");
     viewProvider?.setMcpEnabled(false);
-    outputChannel.appendLine("[e2mcp] MCP disabled \u2014 hardware disconnected for config change");
-    admConsole?.stop();
-    if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-      vscode.debug.stopDebugging();
-    }
+    outputChannel.appendLine("[e2mcp] MCP disabled \u2014 hardware released for config change");
   } catch { /* ignore */ }
 }
 

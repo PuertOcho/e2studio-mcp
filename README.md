@@ -32,13 +32,14 @@ Toolchain Renesas + hardware objetivo (E2 Lite / E1 / E2 / J-Link)
 - Build pipeline: `build_project`, `clean_project`, `rebuild_project`, `get_build_status`
 - Análisis de memoria: `get_build_size`, `get_map_summary`, `get_linker_sections`
 - Metadatos de proyecto: `list_projects`, `get_project_config`
-- Flash/debug: `flash_firmware`, `debug_connect`, `debug_disconnect`, `debug_status`
+- Flash/debug: `debug_start`, `debug_stop`, `debug_status`
 - Consola ADM: `get_adm_log`
 - Recursos MCP:
   - `e2studio://build/log`
   - `e2studio://debug/adm/log`
   - `e2studio://project/memory`
   - `e2studio://project/config`
+  - `e2studio://activity/log`
 
 ## Requisitos
 
@@ -157,9 +158,8 @@ py -3 -m e2studio_mcp
 | Project | `get_project_config(project?, config?)` | Parsea detalles de `.cproject` |
 | Map | `get_map_summary(project?, config?)` | Resumen de secciones + porcentajes |
 | Map | `get_linker_sections(project?, config?)` | Detalle individual de secciones de linker |
-| Flash | `flash_firmware(project?, file?, erase_data_flash?, config?, launch_file?)` | Graba `.mot` por RSP usando la build config y `.launch` seleccionados |
-| Flash | `debug_connect(project?, launch_file?)` | Inicia sesión `e2-server-gdb` |
-| Flash | `debug_disconnect()` | Cierra sesión de depuración |
+| Flash | `debug_start(project?)` | Inicia sesión de debug (build + flash + debug) vía extensión VS Code |
+| Flash | `debug_stop()` | Detiene la sesión de debug activa |
 | Flash | `debug_status()` | Estado actual de la sesión |
 | Debug | `get_adm_log(port?, wait_seconds?, duration_ms?, poll_ms?, max_bytes?)` | Lee un snapshot del buffer ADM / consola virtual |
 
@@ -174,8 +174,9 @@ El flujo previsto en la extensión es:
 - seleccionar proyecto detectado automáticamente dentro del workspace e2 Studio
 - seleccionar `buildConfig` real a partir de carpetas de salida con `Makefile`
 - seleccionar `.launch` concreto o dejar `Auto-detect` para priorizar `*HardwareDebug*`
-- lanzar `Build`, `Clean`, `Rebuild`, `Flash`, `Flash+Run` o `Debug` usando esa selección activa
-- usar `Validate` para automatizar `rebuild + flash+run + apertura de consola virtual`
+- lanzar `Build`, `Clean`, `Rebuild`, `Flash` o `Debug` usando esa selección activa
+- `Flash` graba el firmware sin iniciar sesión de debug (build automática + flash vía e2-server-gdb)
+- `Debug` equivale a `Flash+Run` con sesión de debug activa
 
 ### Nota sobre Memory
 

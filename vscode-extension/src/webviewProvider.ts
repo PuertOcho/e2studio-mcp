@@ -19,6 +19,8 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private selectedLaunchFile = "";
   private memory?: MemoryInfo;
   private busy = false;
+  private busyTimeout?: ReturnType<typeof setTimeout>;
+  private memoryHint: "none" | "cleaned" | "build-failed" = "none";
   private mcpEnabled = true;
   private debugActive = false;
   private probeStatus: "ok" | "warning" | "disconnected" | "unknown" = "unknown";
@@ -83,10 +85,23 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Set busy state — disables action buttons in the webview. */
+  /** Set busy state — disables action buttons in the webview.
+   *  Includes a 30 s safety watchdog: if nothing clears busy within that
+   *  window, the UI auto-recovers so buttons never stay locked forever. */
   setBusy(busy: boolean): void {
     this.busy = busy;
     this.view?.webview.postMessage({ command: "setBusy", busy });
+    if (this.busyTimeout) {
+      clearTimeout(this.busyTimeout);
+      this.busyTimeout = undefined;
+    }
+    if (busy) {
+      this.busyTimeout = setTimeout(() => {
+        if (this.busy) {
+          this.setBusy(false);
+        }
+      }, 30_000);
+    }
   }
 
   setDebugActive(debugActive: boolean): void {
@@ -135,6 +150,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case "build":
         case "clean":
         case "rebuild":
+        case "flash":
         case "debug":
         case "stopDebug":
           this.onCommand(msg.command);
@@ -231,8 +247,10 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Refresh memory usage from .map file. */
-  refreshMemory(): void {
+  /** Refresh memory usage from .map file.
+   *  @param hint Optional context for why data may be missing. */
+  refreshMemory(hint?: "none" | "cleaned" | "build-failed"): void {
+    this.memoryHint = hint ?? "none";
     const proj = this.projects.find((p) => p.name === this.selectedProject);
     if (proj) {
       const deviceKey = this.resolveDeviceKey(proj);
@@ -681,6 +699,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       <button class="action-btn" onclick="postMsg('build')">Build</button>
       <button class="action-btn secondary" onclick="postMsg('clean')">Clean</button>
       <button class="action-btn secondary" onclick="postMsg('rebuild')">Rebuild</button>
+      <button class="action-btn" onclick="postMsg('flash')" title="Flash firmware (no debug)">Flash</button>
       <button id="debugBtn" class="action-btn" onclick="postMsg('debug')" ${this.debugActive ? "disabled" : ""}>&#x25B6; Debug</button>
       <button id="stopBtn" class="action-btn secondary" onclick="postMsg('stopDebug')" ${this.debugActive ? "" : "disabled"}>&#x25A0; Stop</button>
     </div>
@@ -823,7 +842,14 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 
   private renderMemoryContent(): string {
     if (!this.memory) {
-      return `<div class="placeholder">No memory data available for the selected build. Run Build or Rebuild to refresh it.</div>`;
+      switch (this.memoryHint) {
+        case "cleaned":
+          return `<div class="placeholder">Build artifacts cleaned. Run Build to refresh memory data.</div>`;
+        case "build-failed":
+          return `<div class="placeholder">Last build failed \u2014 no valid .map file. Fix errors and rebuild.</div>`;
+        default:
+          return `<div class="placeholder">No memory data available. Run Build or Rebuild to see usage.</div>`;
+      }
     }
 
     return this.renderMemoryBars(this.memory);

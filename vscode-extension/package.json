@@ -77,6 +77,11 @@
         "category": "E2 MCP"
       },
       {
+        "command": "e2mcp.flash",
+        "title": "Flash Firmware",
+        "category": "E2 MCP"
+      },
+      {
         "command": "e2mcp.stopDebug",
         "title": "Stop Debug Session",
         "category": "E2 MCP"
