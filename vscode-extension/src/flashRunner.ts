@@ -150,28 +150,13 @@ export class FlashRunner implements vscode.Disposable {
   }
 
   private findMcpSrc(): string | undefined {
-    // Search for the MCP src directory relative to extension
-    const candidates: string[] = [];
     const extDir = path.dirname(path.dirname(__dirname));
-    candidates.push(path.join(extDir, "src"));
-    candidates.push(path.join(extDir, "..", "e2studio-mcp", "src"));
-
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders) {
-      for (const folder of folders) {
-        candidates.push(
-          path.join(
-            folder.uri.fsPath,
-            "e2Studio_2024_workspace",
-            "e2studio-mcp",
-            "src"
-          )
-        );
-        candidates.push(
-          path.join(folder.uri.fsPath, "e2studio-mcp", "src")
-        );
-      }
-    }
+    const candidates = [
+      // 1. Bundled inside the extension (installed via .vsix)
+      path.join(extDir, "bundled", "src"),
+      // 2. Sibling in dev layout (running from source)
+      path.join(extDir, "src"),
+    ];
 
     for (const c of candidates) {
       if (

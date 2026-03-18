@@ -192,6 +192,8 @@
     "compile": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --sourcemap",
     "compile:prod": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --minify",
     "watch": "esbuild src/extension.ts --bundle --outdir=dist --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "bundle": "node scripts/bundle.js",
+    "prepackage": "node scripts/bundle.js",
     "package": "npm run compile:prod && vsce package",
     "lint": "tsc --noEmit"
   },

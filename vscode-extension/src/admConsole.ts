@@ -103,8 +103,7 @@ export class ADMConsole implements vscode.Disposable {
     const scriptPath = this.findAdmScript();
     if (!scriptPath) {
       this.channel.appendLine(
-        "[console] ERROR: adm_console.py not found. " +
-          "Expected in e2studio-mcp/scripts/adm_console.py"
+        "[console] ERROR: adm_console.py not found."
       );
       return;
     }
@@ -159,16 +158,22 @@ export class ADMConsole implements vscode.Disposable {
   }
 
   /**
-   * Find adm_console.py relative to the extension or workspace.
+   * Find adm_console.py relative to the extension.
    *
    * Search order:
-   * 1. Same repo: ../scripts/adm_console.py (relative to extension)
-   * 2. Workspace folders containing e2studio-mcp/scripts/adm_console.py
+   * 1. Bundled inside extension (installed via .vsix)
+   * 2. Sibling scripts/ folder (dev layout)
    */
   private findAdmScript(): string | undefined {
-    // 1. Relative to the extension's install location
-    //    Extension is in vscode-extension/, script is in scripts/
     const extDir = this.context.extensionPath;
+
+    // 1. Bundled inside the extension (installed via .vsix)
+    const bundled = path.join(extDir, "bundled", "scripts", "adm_console.py");
+    if (require("fs").existsSync(bundled)) {
+      return bundled;
+    }
+
+    // 2. Relative to the extension's install location (dev layout)
     const relativeFromExt = path.join(
       extDir,
       "..",
@@ -177,24 +182,6 @@ export class ADMConsole implements vscode.Disposable {
     );
     if (require("fs").existsSync(relativeFromExt)) {
       return relativeFromExt;
-    }
-
-    // 2. Search workspace folders
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders) {
-      for (const folder of folders) {
-        for (const sub of [
-          "e2Studio_2024_workspace/e2studio-mcp/scripts/adm_console.py",
-          "e2studio-mcp/scripts/adm_console.py",
-          "scripts/adm_console.py",
-          "Scripts/adm_console.py",
-        ]) {
-          const candidate = path.join(folder.uri.fsPath, sub);
-          if (require("fs").existsSync(candidate)) {
-            return candidate;
-          }
-        }
-      }
     }
 
     return undefined;
