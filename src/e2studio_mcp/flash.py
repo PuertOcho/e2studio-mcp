@@ -181,15 +181,9 @@ def _get_debug_tools_dir(cfg: Config) -> Path | None:
     """Locate DebugComp/RX directory with e2-server-gdb and rx-elf-gdb.
 
     Search order:
-    1. flash.debugToolsPath from JSON config
-    2. ~/.eclipse/com.renesas.platform_*/DebugComp/RX/
-    3. e2studioPath/../DebugComp/RX/
+    1. ~/.eclipse/com.renesas.platform_*/DebugComp/RX/
+    2. e2studioPath/../DebugComp/RX/
     """
-    if cfg.flash.debug_tools_path:
-        p = Path(cfg.flash.debug_tools_path)
-        if (p / "e2-server-gdb.exe").exists():
-            return p
-
     eclipse_dir = Path.home() / ".eclipse"
     if eclipse_dir.exists():
         for d in sorted(eclipse_dir.iterdir(), reverse=True):
@@ -198,20 +192,19 @@ def _get_debug_tools_dir(cfg: Config) -> Path | None:
                 if (candidate / "e2-server-gdb.exe").exists():
                     return candidate
 
-    e2_root = Path(cfg.toolchain.e2studio_path)
-    candidate = e2_root.parent / "DebugComp" / "RX"
-    if (candidate / "e2-server-gdb.exe").exists():
-        return candidate
+    if cfg.toolchain.e2studio_path:
+        e2_root = Path(cfg.toolchain.e2studio_path)
+        candidate = e2_root.parent / "DebugComp" / "RX"
+        if (candidate / "e2-server-gdb.exe").exists():
+            return candidate
 
     return None
 
 
 def _get_python3_bin_dir(cfg: Config) -> Path | None:
     """Find Python3 DLLs directory needed by rx-elf-gdb."""
-    if cfg.flash.python3_bin_path:
-        p = Path(cfg.flash.python3_bin_path)
-        if p.exists():
-            return p
+    if not cfg.toolchain.e2studio_path:
+        return None
 
     plugins_dir = Path(cfg.toolchain.e2studio_path) / "plugins"
     if plugins_dir.exists():
@@ -235,53 +228,6 @@ def _build_gdb_env(cfg: Config, tools_dir: Path) -> dict[str, str]:
     return env
 
 
-def _fallback_launch_config(cfg: Config) -> LaunchConfig:
-    """Build LaunchConfig from global flash config (no .launch file)."""
-    fc = cfg.flash
-    params = (
-        f"-g {fc.debugger} -t {fc.device}"
-        f" -uConnectionTimeout= 30"
-        f' -uInputClock= "{fc.input_clock}"'
-        f' -uIdCode= "{fc.id_code}"'
-        f' -uWorkRamAddress= "1000"'
-        f' -uhookWorkRamAddr= "0x3fdd0"'
-        f' -uhookWorkRamSize= "0x230"'
-    )
-    return LaunchConfig(
-        server_params=params,
-        device=fc.device,
-        gdb_name=fc.gdb_executable,
-        port=fc.gdb_port,
-    )
-
-
-def _normalize_device_name(device: str) -> str:
-    """Normalize device names for compatibility checks."""
-    return re.sub(r"[^A-Z0-9]", "", device.upper())
-
-
-def _devices_compatible(configured_device: str, project_device: str) -> bool:
-    """Treat package suffixes and markers like _DUAL as compatible variants."""
-    if not configured_device or not project_device:
-        return True
-
-    configured = _normalize_device_name(configured_device)
-    project = _normalize_device_name(project_device)
-    return configured.startswith(project) or project.startswith(configured)
-
-
-def _get_project_device(project_path: Path) -> str:
-    """Read the device declared by the project's .cproject file."""
-    cproject_path = project_path / ".cproject"
-    if not cproject_path.exists():
-        return ""
-
-    try:
-        return parse_cproject(cproject_path).device
-    except Exception:
-        return ""
-
-
 def _resolve_launch_config(
     cfg: Config,
     project_path: Path,
@@ -289,7 +235,10 @@ def _resolve_launch_config(
     launch_file: str | None = None,
     prefer_run_launch: bool = False,
 ) -> tuple[LaunchConfig | None, str | None]:
-    """Resolve launch configuration, rejecting unsafe cross-target fallbacks."""
+    """Resolve launch configuration from a .launch file.
+
+    A .launch file is required. No fallback to global config.
+    """
     launch_path = (
         find_run_launch_file(project_path, launch_file)
         if prefer_run_launch else
@@ -298,16 +247,10 @@ def _resolve_launch_config(
     if launch_path:
         return parse_launch_file(launch_path), None
 
-    project_device = _get_project_device(project_path)
-    if project_device and not _devices_compatible(cfg.flash.device, project_device):
-        return None, (
-            f"No .launch file found for project '{project_name}'. "
-            f"Fallback flash config targets '{cfg.flash.device}', "
-            f"but the project device is '{project_device}'. "
-            "Add/select a project .launch file or update flash.device to match before debug/flash."
-        )
-
-    return _fallback_launch_config(cfg), None
+    return None, (
+        f"No .launch file found for project '{project_name}'. "
+        "Create a debug launch configuration in e2 Studio first."
+    )
 
 
 # --- RSP (GDB Remote Serial Protocol) client --------------------
@@ -1130,7 +1073,7 @@ def flash_firmware(
             "error": f"Connect failed: {connect_result.get('error')}",
         }
 
-    port = _session.gdb_port if _session else cfg.flash.gdb_port
+    port = _session.gdb_port if _session else 61234
     launch_cfg = _session.launch_cfg if _session else None
     init_commands = (launch_cfg.init_commands if launch_cfg else []) or []
 

@@ -73,8 +73,7 @@ def _resolve_device_capacities(proj_path: Path) -> tuple[int, int, int]:
     """Resolve ROM/RAM/DataFlash capacities for a project.
 
     Reads the project's .cproject to get the actual device name,
-    then looks it up in cfg.devices (also tries stripping _DUAL suffix).
-    Falls back to global flash.device config.
+    then looks it up in the built-in device table (also tries stripping _DUAL suffix).
     """
     device_name = None
     cproject = proj_path / ".cproject"
@@ -92,7 +91,7 @@ def _resolve_device_capacities(proj_path: Path) -> tuple[int, int, int]:
         if not device_info and device_name.endswith("_DUAL"):
             device_info = cfg.get_device_info(device_name.removesuffix("_DUAL"))
     if not device_info:
-        device_info = cfg.get_device_info()  # fallback to global flash.device
+        device_info = cfg.get_device_info()  # fallback to first known device
 
     rom_cap = device_info.rom_size if device_info else 2097152
     ram_cap = device_info.ram_size if device_info else 655360
@@ -460,7 +459,7 @@ def get_adm_log(
         duration_ms=duration_ms,
         poll_ms=poll_ms,
         max_bytes=max_bytes,
-        gdb_port=cfg.flash.gdb_port,
+        gdb_port=61234,
     )
 
 

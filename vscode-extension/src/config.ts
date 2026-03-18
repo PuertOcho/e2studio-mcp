@@ -15,31 +15,10 @@ export interface ExtensionConfig {
     e2studioPath: string;
     makePath: string;
   };
-  flash: {
-    debugger: string;
-    device: string;
-    gdbPort: number;
-    debugToolsPath: string;
-    python3BinPath: string;
-    gdbExecutable: string;
-    inputClock: string;
-    idCode: string;
-  };
-}
-
-/** Resolve a path from: VS Code setting > JSON value > auto-detect. */
-function resolvePath(settingKey: string, jsonValue: string | undefined, autoDetect: () => string): string {
-  const fromSetting = vscode.workspace
-    .getConfiguration("e2mcp")
-    .get<string>(settingKey, "")
-    .trim();
-  if (fromSetting) return fromSetting;
-  if (jsonValue) return jsonValue;
-  return autoDetect();
 }
 
 /** Auto-detect DebugComp/RX under ~/.eclipse/com.renesas.platform_{id}/DebugComp/RX */
-function detectDebugToolsPath(): string {
+export function detectDebugToolsPath(): string {
   const eclipseDir = path.join(os.homedir(), ".eclipse");
   try {
     const platforms = fs.readdirSync(eclipseDir)
@@ -54,7 +33,7 @@ function detectDebugToolsPath(): string {
 }
 
 /** Auto-detect Renesas embedded Python3 under e2 Studio plugins. */
-function detectPython3BinPath(e2studioPath: string): string {
+export function detectPython3BinPath(e2studioPath: string): string {
   if (!e2studioPath) return "";
   const pluginsDir = path.join(e2studioPath, "plugins");
   try {
@@ -123,105 +102,30 @@ function resolveBuildJobs(rawValue: unknown): number {
 }
 
 /**
- * Load e2studio-mcp.json config.
- *
- * Resolution order:
- * 1. `e2mcp.configPath` setting
- * 2. `E2STUDIO_MCP_CONFIG` env var
- * 3. Auto-detect: walk up from workspace folders looking for e2studio-mcp.json
+ * Load config from VS Code settings + auto-detection.
+ * No JSON config file is used.
  */
 export function loadConfig(): ExtensionConfig {
-  let configPath: string | undefined;
+  const s = vscode.workspace.getConfiguration("e2mcp");
 
-  // 1. VS Code setting
-  const settingPath = vscode.workspace
-    .getConfiguration("e2mcp")
-    .get<string>("configPath");
-  if (settingPath && fs.existsSync(settingPath)) {
-    configPath = settingPath;
-  }
+  const e2studioPath = s.get<string>("e2studioPath", "").trim() || detectE2studioPath();
+  const ccrxPath = s.get<string>("ccrxPath", "").trim() || detectCcrxPath();
+  const makePath = s.get<string>("makePath", "").trim() || detectMakePath(e2studioPath);
 
-  // 2. Environment variable
-  if (!configPath) {
-    const envPath = process.env.E2STUDIO_MCP_CONFIG;
-    if (envPath && fs.existsSync(envPath)) {
-      configPath = envPath;
-    }
-  }
-
-  // 3. Auto-detect in workspace
-  if (!configPath) {
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders) {
-      for (const folder of folders) {
-        // Check in the folder itself
-        const candidate1 = path.join(folder.uri.fsPath, "e2studio-mcp.json");
-        if (fs.existsSync(candidate1)) {
-          configPath = candidate1;
-          break;
-        }
-        // Check common subfolder patterns
-        for (const sub of [
-          "e2Studio_2024_workspace/e2studio-mcp",
-          "e2studio-mcp",
-        ]) {
-          const candidate2 = path.join(
-            folder.uri.fsPath,
-            sub,
-            "e2studio-mcp.json"
-          );
-          if (fs.existsSync(candidate2)) {
-            configPath = candidate2;
-            break;
-          }
-        }
-        if (configPath) break;
-      }
-    }
-  }
-
-  if (!configPath) {
-    throw new Error(
-      "e2studio-mcp.json not found. Set e2mcp.configPath in settings."
-    );
-  }
-
-  const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-  const configuredProjectsPath = vscode.workspace
-    .getConfiguration("e2mcp")
-    .get<string>("projectsPath", "")
-    .trim();
-  const defaultProjectRootPath = raw.workspace ?? "";
-  const projectRootPath = configuredProjectsPath || defaultProjectRootPath;
-
-  // Resolve toolchain paths: VS Code setting > e2studio-mcp.json > auto-detect
-  const e2studioPath = resolvePath("e2studioPath", raw.toolchain?.e2studioPath, detectE2studioPath);
-  const ccrxPath = resolvePath("ccrxPath", raw.toolchain?.ccrxPath, detectCcrxPath);
-  const makePath = resolvePath("makePath", raw.toolchain?.makePath, () => detectMakePath(e2studioPath));
-  const debugToolsPath = resolvePath("debugToolsPath", raw.flash?.debugToolsPath, detectDebugToolsPath);
-  const python3BinPath = resolvePath("python3BinPath", raw.flash?.python3BinPath, () => detectPython3BinPath(e2studioPath));
+  const workspace = s.get<string>("workspace", "").trim();
+  const projectsPath = s.get<string>("projectsPath", "").trim();
 
   return {
-    workspace: raw.workspace ?? "",
-    projectRootPath,
-    defaultProject: raw.defaultProject ?? "headc-fw",
-    buildConfig: raw.buildConfig ?? "HardwareDebug",
-    buildMode: raw.buildMode ?? "make",
-    buildJobs: resolveBuildJobs(raw.buildJobs),
+    workspace,
+    projectRootPath: projectsPath || workspace,
+    defaultProject: s.get<string>("defaultProject", "").trim(),
+    buildConfig: s.get<string>("buildConfig", "HardwareDebug").trim(),
+    buildMode: s.get<string>("buildMode", "make"),
+    buildJobs: resolveBuildJobs(s.get<number>("buildJobs", 0)),
     toolchain: {
       ccrxPath,
       e2studioPath,
       makePath,
-    },
-    flash: {
-      debugger: raw.flash?.debugger ?? "E2Lite",
-      device: raw.flash?.device ?? "R5F5651E",
-      gdbPort: raw.flash?.gdbPort ?? 61234,
-      debugToolsPath,
-      python3BinPath,
-      gdbExecutable: raw.flash?.gdbExecutable ?? "rx-elf-gdb",
-      inputClock: raw.flash?.inputClock ?? "24.0",
-      idCode: raw.flash?.idCode ?? "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
     },
   };
 }

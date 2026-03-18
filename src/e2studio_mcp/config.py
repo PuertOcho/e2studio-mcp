@@ -1,12 +1,34 @@
-"""Configuration loader for e2studio-mcp."""
+"""Configuration loader for e2studio-mcp.
+
+All settings come from environment variables and auto-detection.
+No JSON config file is used.
+
+Environment variables (set by the VS Code extension from its settings):
+  E2MCP_WORKSPACE      — Root folder containing Renesas e2 Studio projects
+  E2MCP_PROJECT        — Default project name
+  E2MCP_BUILD_CONFIG   — Build configuration (default: HardwareDebug)
+  E2MCP_BUILD_MODE     — Build backend: make or e2studioc (default: make)
+  E2MCP_BUILD_JOBS     — Parallel build jobs, 0 = auto (default: 0)
+  E2MCP_E2STUDIO_PATH  — Path to e2 Studio eclipse folder
+  E2MCP_CCRX_PATH      — Path to CCRX compiler bin folder
+  E2MCP_MAKE_PATH      — Path to GNU Make folder
+"""
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+# ─── Known Renesas RX devices ────────────────────────────────
+
+_KNOWN_DEVICES: dict[str, dict[str, Any]] = {
+    "R5F5651E": {"family": "RX651", "romSize": 2097152, "ramSize": 655360, "dataFlashSize": 32768},
+    "R5F565NE": {"family": "RX65N", "romSize": 2097152, "ramSize": 655360, "dataFlashSize": 32768},
+    "R5F572NNDxBD": {"family": "RX72N", "romSize": 4194304, "ramSize": 1048576, "dataFlashSize": 32768},
+}
 
 
 @dataclass
@@ -14,18 +36,6 @@ class ToolchainConfig:
     ccrx_path: str = ""
     e2studio_path: str = ""
     make_path: str | None = None
-
-
-@dataclass
-class FlashConfig:
-    debugger: str = "E2Lite"
-    device: str = "R5F5651E"
-    gdb_executable: str = "rx-elf-gdb"
-    gdb_port: int = 61234
-    input_clock: str = "24.0"
-    id_code: str = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
-    debug_tools_path: str = ""
-    python3_bin_path: str = ""
 
 
 @dataclass
@@ -39,13 +49,11 @@ class DeviceInfo:
 @dataclass
 class Config:
     workspace: str = ""
-    default_project: str = "headc-fw"
+    default_project: str = ""
     build_config: str = "HardwareDebug"
     build_mode: str = "make"
     build_jobs: int = 0
     toolchain: ToolchainConfig = field(default_factory=ToolchainConfig)
-    flash: FlashConfig = field(default_factory=FlashConfig)
-    devices: dict[str, DeviceInfo] = field(default_factory=dict)
 
     @property
     def workspace_path(self) -> Path:
@@ -56,8 +64,14 @@ class Config:
         return self.workspace_path / name
 
     def get_device_info(self, device: str | None = None) -> DeviceInfo | None:
-        dev = device or self.flash.device
-        return self.devices.get(dev)
+        """Look up device info from the built-in table."""
+        dev = device or ""
+        if dev and dev in _KNOWN_DEVICES:
+            return _parse_device_entry(_KNOWN_DEVICES[dev])
+        # Return first known device as last resort
+        for info in _KNOWN_DEVICES.values():
+            return _parse_device_entry(info)
+        return None
 
     def get_ccrx_bin(self, tool: str) -> Path:
         """Get full path to a CCRX tool binary (e.g. 'ccrx', 'rlink')."""
@@ -72,71 +86,84 @@ class Config:
         return "make"
 
 
-def _load_raw(config_path: str | Path) -> dict[str, Any]:
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+# ─── Auto-detection ──────────────────────────────────────────
+
+def _detect_e2studio_path() -> str:
+    """Auto-detect e2 Studio eclipse folder."""
+    for candidate in [
+        Path("C:/Renesas/e2_studio/eclipse"),
+        Path("C:/Renesas/e2studio/eclipse"),
+    ]:
+        if candidate.exists():
+            return str(candidate)
+    return ""
 
 
-def _parse_toolchain(data: dict[str, Any]) -> ToolchainConfig:
-    return ToolchainConfig(
-        ccrx_path=data.get("ccrxPath", ""),
-        e2studio_path=data.get("e2studioPath", ""),
-        make_path=data.get("makePath"),
+def _detect_ccrx_path() -> str:
+    """Auto-detect CCRX compiler: newest version under Program Files (x86)/Renesas/RX."""
+    base = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Renesas" / "RX"
+    try:
+        for ver in sorted(base.iterdir(), reverse=True):
+            bin_dir = ver / "bin"
+            if (bin_dir / "ccrx.exe").exists():
+                return str(bin_dir)
+    except (FileNotFoundError, PermissionError):
+        pass
+    return ""
+
+
+def _detect_make_path(e2studio_path: str) -> str:
+    """Auto-detect GNU make bundled with e2 Studio plugins."""
+    if not e2studio_path:
+        return ""
+    plugins = Path(e2studio_path) / "plugins"
+    try:
+        for d in sorted(plugins.iterdir(), reverse=True):
+            if d.name.startswith("com.renesas.ide.exttools.gnumake") and d.is_dir():
+                mk = d / "mk"
+                if (mk / "make.exe").exists():
+                    return str(mk)
+    except (FileNotFoundError, PermissionError):
+        pass
+    return ""
+
+
+def _auto_detect_toolchain(tc: ToolchainConfig) -> ToolchainConfig:
+    """Fill in missing toolchain paths via auto-detection."""
+    e2 = tc.e2studio_path or _detect_e2studio_path()
+    ccrx = tc.ccrx_path or _detect_ccrx_path()
+    make = tc.make_path or _detect_make_path(e2) or None
+    return ToolchainConfig(ccrx_path=ccrx, e2studio_path=e2, make_path=make)
+
+
+# ─── Parsing helpers ─────────────────────────────────────────
+
+def _parse_device_entry(info: dict[str, Any]) -> DeviceInfo:
+    return DeviceInfo(
+        family=info.get("family", ""),
+        rom_size=info.get("romSize", 0),
+        ram_size=info.get("ramSize", 0),
+        data_flash_size=info.get("dataFlashSize", 0),
     )
 
 
-def _parse_flash(data: dict[str, Any]) -> FlashConfig:
-    return FlashConfig(
-        debugger=data.get("debugger", "E2Lite"),
-        device=data.get("device", "R5F5651E"),
-        gdb_executable=data.get("gdbExecutable", "rx-elf-gdb"),
-        gdb_port=data.get("gdbPort", 61234),
-        input_clock=data.get("inputClock", "24.0"),
-        id_code=data.get("idCode", "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
-        debug_tools_path=data.get("debugToolsPath", ""),
-        python3_bin_path=data.get("python3BinPath", ""),
-    )
+def load_config() -> Config:
+    """Load configuration from environment variables + auto-detection."""
+    e2 = os.environ.get("E2MCP_E2STUDIO_PATH", "")
+    ccrx = os.environ.get("E2MCP_CCRX_PATH", "")
+    make = os.environ.get("E2MCP_MAKE_PATH", "")
 
-
-def _parse_devices(data: dict[str, Any]) -> dict[str, DeviceInfo]:
-    devices: dict[str, DeviceInfo] = {}
-    for name, info in data.items():
-        devices[name] = DeviceInfo(
-            family=info.get("family", ""),
-            rom_size=info.get("romSize", 0),
-            ram_size=info.get("ramSize", 0),
-            data_flash_size=info.get("dataFlashSize", 0),
-        )
-    return devices
-
-
-def load_config(config_path: str | Path | None = None) -> Config:
-    """Load configuration from JSON file.
-
-    Resolution order:
-    1. Explicit path argument
-    2. E2STUDIO_MCP_CONFIG environment variable
-    3. e2studio-mcp.json in the package's parent directory
-    """
-    if config_path is None:
-        config_path = os.environ.get("E2STUDIO_MCP_CONFIG")
-    if config_path is None:
-        # Default: look relative to this file's grandparent (project root)
-        config_path = Path(__file__).parent.parent.parent / "e2studio-mcp.json"
-
-    path = Path(config_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
-
-    raw = _load_raw(path)
+    tc = _auto_detect_toolchain(ToolchainConfig(
+        ccrx_path=ccrx,
+        e2studio_path=e2,
+        make_path=make or None,
+    ))
 
     return Config(
-        workspace=raw.get("workspace", ""),
-        default_project=raw.get("defaultProject", "headc-fw"),
-        build_config=raw.get("buildConfig", "HardwareDebug"),
-        build_mode=raw.get("buildMode", "make"),
-        build_jobs=max(0, int(raw.get("buildJobs", 0))),
-        toolchain=_parse_toolchain(raw.get("toolchain", {})),
-        flash=_parse_flash(raw.get("flash", {})),
-        devices=_parse_devices(raw.get("devices", {})),
+        workspace=os.environ.get("E2MCP_WORKSPACE", ""),
+        default_project=os.environ.get("E2MCP_PROJECT", ""),
+        build_config=os.environ.get("E2MCP_BUILD_CONFIG", "HardwareDebug"),
+        build_mode=os.environ.get("E2MCP_BUILD_MODE", "make"),
+        build_jobs=max(0, int(os.environ.get("E2MCP_BUILD_JOBS", "0"))),
+        toolchain=tc,
     )

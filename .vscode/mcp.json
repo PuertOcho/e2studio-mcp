@@ -10,7 +10,7 @@
       ],
       "cwd": "${workspaceFolder}/e2Studio_2024_workspace/e2studio-mcp/src",
       "env": {
-        "E2STUDIO_MCP_CONFIG": "${workspaceFolder}/e2Studio_2024_workspace/e2studio-mcp/e2studio-mcp.json"
+        "E2MCP_WORKSPACE": "${workspaceFolder}/e2Studio_2024_workspace"
       }
     }
   }

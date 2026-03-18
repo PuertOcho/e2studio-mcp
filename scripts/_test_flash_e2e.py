@@ -22,7 +22,7 @@ from e2studio_mcp.flash import (
 
 
 def main():
-    cfg = load_config(Path(__file__).parent.parent / "e2studio-mcp.json")
+    cfg = load_config()
     project = "headc-fw"
 
     print("=" * 60)

@@ -6,8 +6,33 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-18
+
 ### Changed
 
+- **Breaking**: eliminated `e2studio-mcp.json` configuration file entirely.
+- All configuration now comes from VS Code settings (`e2mcp.*`) and `E2MCP_*` environment variables.
+- Python `config.py` rewritten: reads env vars + auto-detect, no JSON parsing.
+- Extension `config.ts` rewritten: reads VS Code settings + auto-detect, no file I/O.
+- `flashRunner.ts`: removed `findConfigPath()`, added `buildMcpEnv()` to pass settings as env vars to the Python subprocess.
+- Architecture diagram in README replaced with Mermaid.
+
+### Added
+
+- New VS Code settings: `e2mcp.workspace`, `e2mcp.defaultProject`, `e2mcp.buildConfig`.
+- New env vars for standalone MCP server: `E2MCP_WORKSPACE`, `E2MCP_PROJECT`, `E2MCP_BUILD_CONFIG`, etc.
+
+### Removed
+
+- `e2studio-mcp.json` file deleted.
+- `e2mcp.configPath` VS Code setting removed.
+- `E2STUDIO_MCP_CONFIG` environment variable removed.
+- `FlashConfig` section removed (flash params come from `.launch` files only).
+- `devices` field removed from config (known devices are built-in).
+
+### Fixed
+
+- Extension no longer throws/shows error popups when config file is missing.
 - Removed the duplicated Virtual Console section from the sidebar webview; ADM output remains in the VS Code `Output` channel.
 - Added explicit `.launch` selection in the extension, with `Auto-detect` fallback when the user does not choose one.
 - Fixed extension state so project/debugger/launch selections are shared consistently across sidebar, status bar, build, flash, and debug.

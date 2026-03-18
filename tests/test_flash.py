@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-from e2studio_mcp.config import Config, FlashConfig
+from e2studio_mcp.config import Config
 from e2studio_mcp.flash import (
     LaunchConfig,
     _decode_monitor_hex_text,
-    _devices_compatible,
     _extract_adm_port,
     _parse_mot_file,
     _prepare_debug_init_commands,
@@ -227,58 +225,19 @@ class TestParseLaunchFile:
 
 
 class TestLaunchResolution:
-    def test_devices_compatible_accepts_package_variants(self):
-        assert _devices_compatible("R5F5651E", "R5F5651EDxFP") is True
-        assert _devices_compatible("R5F572NNDxBD", "R5F572NNDxBD_DUAL") is True
-
-    def test_rejects_global_fallback_for_mismatched_project_device(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    def test_no_launch_file_returns_error(
+        self, tmp_path: Path,
     ):
         project_path = tmp_path / "headc_v2_fw"
         project_path.mkdir()
-        (project_path / ".cproject").write_text("<cproject />", encoding="utf-8")
 
-        cfg = Config(
-            workspace=str(tmp_path),
-            flash=FlashConfig(device="R5F5651E"),
-        )
-
-        monkeypatch.setattr(
-            "e2studio_mcp.flash.parse_cproject",
-            lambda _: SimpleNamespace(device="R5F572NNDxBD_DUAL"),
-        )
+        cfg = Config(workspace=str(tmp_path))
 
         launch_cfg, error = _resolve_launch_config(cfg, project_path, "headc_v2_fw")
 
         assert launch_cfg is None
         assert error is not None
-        assert "No .launch file found for project 'headc_v2_fw'" in error
-        assert "R5F5651E" in error
-        assert "R5F572NNDxBD_DUAL" in error
-
-    def test_allows_global_fallback_when_project_device_is_compatible(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-    ):
-        project_path = tmp_path / "headc-fw"
-        project_path.mkdir()
-        (project_path / ".cproject").write_text("<cproject />", encoding="utf-8")
-
-        cfg = Config(
-            workspace=str(tmp_path),
-            flash=FlashConfig(device="R5F5651E", gdb_port=61234),
-        )
-
-        monkeypatch.setattr(
-            "e2studio_mcp.flash.parse_cproject",
-            lambda _: SimpleNamespace(device="R5F5651EDxFP"),
-        )
-
-        launch_cfg, error = _resolve_launch_config(cfg, project_path, "headc-fw")
-
-        assert error is None
-        assert launch_cfg is not None
-        assert launch_cfg.device == "R5F5651E"
-        assert launch_cfg.port == 61234
+        assert "No .launch file found" in error
 
 
 class TestDebugInitCommands:

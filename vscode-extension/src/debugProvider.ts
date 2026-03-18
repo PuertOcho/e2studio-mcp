@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { ExtensionConfig } from "./config";
+import { ExtensionConfig, detectDebugToolsPath, detectPython3BinPath } from "./config";
 import { parseLaunchFile, findLaunchFile, findRunLaunchFile } from "./launchParser";
 import { E2McpViewProvider } from "./webviewProvider";
 
@@ -12,7 +12,7 @@ import { E2McpViewProvider } from "./webviewProvider";
  * this provider generates a complete Renesas debug config from:
  *   1. The current project/debugger/buildConfig selections in the sidebar
  *   2. An e2 Studio .launch file (if found in the project directory)
- *   3. Fallback values from e2studio-mcp.json
+ *   3. Hardcoded defaults for RX targets
  */
 export class DebugProvider implements vscode.DebugConfigurationProvider {
   constructor(
@@ -51,22 +51,25 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
     const buildConfig = this.viewProvider.currentBuildConfig || this.config.buildConfig;
     const sidebarDebuggerType = this.viewProvider.currentDebugger || "E2LITE";
     const launchSelection = this.viewProvider.currentLaunchFile || undefined;
-    const flash = this.config.flash;
 
     const projectRoot = path.join(workspace, projectName);
     const programPath = path.join(projectRoot, buildConfig, `${projectName}.x`);
 
+    // Auto-detect tool paths
+    const debugToolsPath = detectDebugToolsPath();
+    const python3BinPath = detectPython3BinPath(this.config.toolchain.e2studioPath);
+
     // GDB executable: search common locations
-    const gdbPath = this.findGdbExecutable(flash.gdbExecutable);
+    const gdbPath = this.findGdbExecutable("rx-elf-gdb");
 
     // pythonHome: parent of python3BinPath
-    const pythonHome = flash.python3BinPath
-      ? path.dirname(flash.python3BinPath)
+    const pythonHome = python3BinPath
+      ? path.dirname(python3BinPath)
       : "";
 
     // e2-server-gdb path
-    const serverPath = flash.debugToolsPath
-      ? path.join(flash.debugToolsPath, "e2-server-gdb.exe")
+    const serverPath = debugToolsPath
+      ? path.join(debugToolsPath, "e2-server-gdb.exe")
       : "e2-server-gdb.exe";
 
     // Try to parse .launch file for detailed serverParameters and initCommands
@@ -80,8 +83,8 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       "monitor start_interface,ADM,main",
     ];
     let gdbArguments: string[] = [];
-    let port = String(flash.gdbPort);
-    let effectiveDevice = flash.device;
+    let port = "61234";
+    let effectiveDevice = "R5F5651E";
     let effectiveDebuggerType = sidebarDebuggerType;
 
     if (launchFile) {
@@ -119,7 +122,7 @@ export class DebugProvider implements vscode.DebugConfigurationProvider {
       serverParameters = {
         "-w": 0,
         "-uUseFine=": 0,
-        "-uInputClock=": flash.inputClock,
+        "-uInputClock=": "24.0",
         "-uClockSrcHoco=": 0,
         "-z": "0",
         "-uhookWorkRamAddr=": "0x3fdd0",

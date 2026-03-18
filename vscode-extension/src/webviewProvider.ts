@@ -33,8 +33,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   ) {
     this.selectedProject = config.defaultProject;
     this.selectedBuildConfig = config.buildConfig;
-    this.selectedDebugger =
-      config.flash.debugger === "E2Lite" ? "E2LITE" : config.flash.debugger;
+    this.selectedDebugger = "E2LITE";
     this.refreshProjects();
   }
 

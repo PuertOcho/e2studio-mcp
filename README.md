@@ -47,21 +47,28 @@ That keeps the MCP client aligned with the same project state the user sees in t
 
 ## Architecture
 
-```text
-VS Code / MCP Client / AI Assistant
-               |
-               | MCP
-               v
-       e2studio_mcp.server
-               |
-               +-- build.py      -> make / e2studioc backends
-               +-- project.py    -> .cproject parsing and project discovery
-               +-- mapfile.py    -> linker map parsing and memory summaries
-               +-- flash.py      -> e2-server-gdb / flash / session control
-               +-- adm.py        -> virtual console capture
-               |
-               v
-   VS Code extension state + Renesas toolchain + target hardware
+```mermaid
+graph TD
+    Client["VS Code / MCP Client / AI Assistant"]
+
+    Client -- MCP --> Server["e2studio_mcp.server"]
+
+    Server --> Build["build.py<br/>make · e2studioc"]
+    Server --> Project["project.py<br/>.cproject parsing"]
+    Server --> Mapfile["mapfile.py<br/>linker map / memory"]
+    Server --> Flash["flash.py<br/>e2-server-gdb / flash"]
+    Server --> ADM["adm.py<br/>virtual console"]
+
+    subgraph ext ["VS Code Extension"]
+        State["Project / Config / Launch / Debugger state"]
+        Sidebar["Sidebar UI — manual control"]
+    end
+
+    Server -- reads state --> ext
+    Flash -- spawns --> GDB["e2-server-gdb + rx-elf-gdb"]
+    Build -- invokes --> Make["make / e2studioc"]
+    GDB --> HW["Renesas RX target"]
+    Make --> Toolchain["CCRX toolchain"]
 ```
 
 ## MCP Tools
@@ -136,7 +143,6 @@ e2studio-mcp/
   tests/
   scripts/
   vscode-extension/
-  e2studio-mcp.json
 ```
 
 ## Install The Python Server
@@ -154,56 +160,39 @@ py -3 -m pip install -e .[dev]
 
 ## Configuration
 
-The server resolves configuration in this order:
+No configuration file is needed. All settings come from **VS Code settings** (`e2mcp.*`) and **auto-detection**.
 
-1. explicit path passed programmatically
-2. `E2STUDIO_MCP_CONFIG` environment variable
-3. local `e2studio-mcp.json` in the repository root
+### VS Code Settings
 
-### Minimal Example
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `e2mcp.workspace` | `""` | Root folder containing e2 Studio projects |
+| `e2mcp.defaultProject` | `""` | Default project name |
+| `e2mcp.buildConfig` | `HardwareDebug` | Build configuration |
+| `e2mcp.buildMode` | `make` | Build backend: `make` or `e2studioc` |
+| `e2mcp.buildJobs` | `0` | Parallel jobs (`0` = auto, max 16) |
+| `e2mcp.e2studioPath` | auto | Path to e2 Studio `eclipse` folder |
+| `e2mcp.ccrxPath` | auto | Path to CCRX compiler `bin` folder |
+| `e2mcp.makePath` | auto | Path to GNU Make folder |
+| `e2mcp.debugToolsPath` | auto | Path to `DebugComp/RX` folder |
+| `e2mcp.python3BinPath` | auto | Path to Renesas embedded Python3 |
 
-```json
-{
-  "workspace": "C:/Users/anton/Desktop/Proyectos/e2Studio_2024_workspace",
-  "defaultProject": "headc-fw",
-  "buildConfig": "HardwareDebug",
-  "buildMode": "make",
-  "buildJobs": 0,
-  "toolchain": {
-    "ccrxPath": "C:/Program Files (x86)/Renesas/RX/3_7_0/bin",
-    "e2studioPath": "C:/Renesas/e2_studio/eclipse",
-    "makePath": "C:/Renesas/e2_studio/eclipse/plugins/.../mk"
-  },
-  "flash": {
-    "debugger": "E2Lite",
-    "device": "R5F5651E",
-    "gdbExecutable": "rx-elf-gdb",
-    "gdbPort": 61234,
-    "inputClock": "24.0",
-    "idCode": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
-    "debugToolsPath": "C:/Users/.../.eclipse/com.renesas.platform_xxx/DebugComp/RX",
-    "python3BinPath": "C:/Renesas/e2_studio/eclipse/plugins/.../bin"
-  },
-  "devices": {
-    "R5F5651E": {
-      "family": "RX651",
-      "romSize": 2097152,
-      "ramSize": 655360,
-      "dataFlashSize": 32768
-    }
-  }
-}
-```
+### MCP Server Environment Variables
 
-Notes:
+When running the Python server standalone (without the extension), pass settings via environment variables:
 
-- `buildMode` supports `make` and `e2studioc`
-- `buildJobs: 0` enables CPU-based auto-detection with a cap of `16`
-- `devices` is used to calculate ROM, RAM and DataFlash percentages in `get_build_size` and `get_map_summary`
-- `flash` values are **fallback defaults**. When a project contains an e2 Studio `.launch` file, the device, debugger, port and server parameters are read from there instead. The `.launch` file always takes priority
-- `python3BinPath` points to the embedded Renesas Python required by `e2-server-gdb`
-- if `debugToolsPath` is omitted, the server tries known auto-detection paths
-- toolchain paths (`ccrxPath`, `e2studioPath`, `makePath`, `debugToolsPath`, `python3BinPath`) are auto-detected if omitted
+| Variable | Maps to |
+|----------|---------|
+| `E2MCP_WORKSPACE` | `e2mcp.workspace` |
+| `E2MCP_PROJECT` | `e2mcp.defaultProject` |
+| `E2MCP_BUILD_CONFIG` | `e2mcp.buildConfig` |
+| `E2MCP_BUILD_MODE` | `e2mcp.buildMode` |
+| `E2MCP_BUILD_JOBS` | `e2mcp.buildJobs` |
+| `E2MCP_E2STUDIO_PATH` | `e2mcp.e2studioPath` |
+| `E2MCP_CCRX_PATH` | `e2mcp.ccrxPath` |
+| `E2MCP_MAKE_PATH` | `e2mcp.makePath` |
+
+Toolchain paths are auto-detected from standard Renesas install locations if not set. Flash/debug parameters come from e2 Studio `.launch` files. Known devices (RX651, RX65N, RX72N) are built-in.
 
 ## Run The MCP Server
 
@@ -246,11 +235,11 @@ py -3 tests/smoke_test.py
 
 ## Troubleshooting
 
-- `Config file not found`: definir `E2STUDIO_MCP_CONFIG` o crear `e2studio-mcp.json` en la raíz.
-- `make not found`: revisar `toolchain.makePath`.
-- `sed`, `ccrx` o `renesas_cc_converter` no encontrados durante `make`: comprobar `toolchain.e2studioPath` y `toolchain.ccrxPath`. La extensión y el backend añaden automáticamente BusyBox de Renesas, CCRX y las utilidades `Utilities/ccrx` de `.eclipse` al `PATH` del build.
-- `e2studioc not found`: comprobar `toolchain.e2studioPath` apuntando a `.../eclipse`.
-- `Cannot find e2-server-gdb`: definir `flash.debugToolsPath` explícitamente.
+- `make not found`: set `e2mcp.makePath` in VS Code settings.
+- `sed`, `ccrx` o `renesas_cc_converter` no encontrados durante `make`: comprobar `e2mcp.e2studioPath` y `e2mcp.ccrxPath`.
+- `e2studioc not found`: comprobar `e2mcp.e2studioPath` apuntando a `.../eclipse`.
+- `Cannot find e2-server-gdb`: set `e2mcp.debugToolsPath` in VS Code settings.
+- `No .launch file found`: create a debug launch configuration in e2 Studio first.
 - `No .mot file found`: compilar antes de grabar.
 - `Cannot connect to e2-server-gdb`: verificar sonda, dispositivo configurado y puerto GDB.
 

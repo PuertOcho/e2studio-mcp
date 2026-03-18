@@ -27,7 +27,7 @@ export class FlashRunner implements vscode.Disposable {
   private flashChannel: vscode.OutputChannel;
   private flashing = false;
 
-  constructor(_config: ExtensionConfig) {
+  constructor(private _config: ExtensionConfig) {
     this.flashChannel = vscode.window.createOutputChannel("E2 MCP Flash");
   }
 
@@ -83,7 +83,7 @@ export class FlashRunner implements vscode.Disposable {
         cwd: mcpSrcDir,
         env: {
           ...process.env,
-          E2STUDIO_MCP_CONFIG: this.findConfigPath() ?? "",
+          ...this.buildMcpEnv(),
         },
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
@@ -185,28 +185,19 @@ export class FlashRunner implements vscode.Disposable {
     return undefined;
   }
 
-  private findConfigPath(): string | undefined {
-    if (process.env.E2STUDIO_MCP_CONFIG) return process.env.E2STUDIO_MCP_CONFIG;
-
-    const settingPath = vscode.workspace
-      .getConfiguration("e2mcp")
-      .get<string>("configPath");
-    if (settingPath && require("fs").existsSync(settingPath)) return settingPath;
-
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders) {
-      for (const folder of folders) {
-        for (const sub of [
-          "e2Studio_2024_workspace/e2studio-mcp/e2studio-mcp.json",
-          "e2studio-mcp/e2studio-mcp.json",
-          "e2studio-mcp.json",
-        ]) {
-          const candidate = path.join(folder.uri.fsPath, sub);
-          if (require("fs").existsSync(candidate)) return candidate;
-        }
-      }
-    }
-    return undefined;
+  /** Build E2MCP_* env vars from the current VS Code configuration. */
+  private buildMcpEnv(): Record<string, string> {
+    const c = this._config;
+    return {
+      E2MCP_WORKSPACE: c.workspace,
+      E2MCP_PROJECT: c.defaultProject,
+      E2MCP_BUILD_CONFIG: c.buildConfig,
+      E2MCP_BUILD_MODE: c.buildMode,
+      E2MCP_BUILD_JOBS: String(c.buildJobs),
+      E2MCP_E2STUDIO_PATH: c.toolchain.e2studioPath,
+      E2MCP_CCRX_PATH: c.toolchain.ccrxPath,
+      E2MCP_MAKE_PATH: c.toolchain.makePath,
+    };
   }
 
   private escPy(s: string): string {

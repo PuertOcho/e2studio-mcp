@@ -2,7 +2,7 @@
   "name": "e2mcp",
   "displayName": "E2 MCP — Build, Flash & Debug",
   "description": "Renesas RX development: virtual console, project selector, build/flash integration for E2 Lite / E1 / J-Link",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "PuertOcho",
   "license": "SEE LICENSE IN LICENSE.txt",
   "repository": {
@@ -119,15 +119,25 @@
     "configuration": {
       "title": "E2 MCP",
       "properties": {
-        "e2mcp.configPath": {
+        "e2mcp.workspace": {
           "type": "string",
           "default": "",
-          "description": "Path to e2studio-mcp.json configuration file"
+          "description": "Root folder containing Renesas e2 Studio projects"
         },
         "e2mcp.projectsPath": {
           "type": "string",
           "default": "",
-          "description": "Override the folder that contains the Renesas e2 Studio projects"
+          "description": "Override the folder that contains the Renesas e2 Studio projects (defaults to workspace)"
+        },
+        "e2mcp.defaultProject": {
+          "type": "string",
+          "default": "",
+          "description": "Default project name for build/flash/debug"
+        },
+        "e2mcp.buildConfig": {
+          "type": "string",
+          "default": "HardwareDebug",
+          "description": "Build configuration name (e.g. HardwareDebug)"
         },
         "e2mcp.e2studioPath": {
           "type": "string",
@@ -153,6 +163,17 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to Renesas embedded Python3 `bin` folder. Auto-detected if empty."
+        },
+        "e2mcp.buildMode": {
+          "type": "string",
+          "default": "make",
+          "enum": ["make", "e2studioc"],
+          "markdownDescription": "Build backend: `make` (GNU Make) or `e2studioc` (e2 Studio CLI)."
+        },
+        "e2mcp.buildJobs": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Parallel build jobs for GNU Make (`-j`). `0` = auto (number of CPU cores)."
         },
         "e2mcp.pythonPath": {
           "type": "string",

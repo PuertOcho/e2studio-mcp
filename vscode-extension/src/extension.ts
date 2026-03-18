@@ -23,35 +23,10 @@ export function activate(context: vscode.ExtensionContext): void {
   outputChannel.appendLine("[e2mcp] Activating...");
 
   // Load config
-  try {
-    config = loadConfig();
-    outputChannel.appendLine(
-      `[e2mcp] Config loaded: workspace=${config.workspace}, projectsRoot=${config.projectRootPath}, project=${config.defaultProject}`
-    );
-  } catch (e: any) {
-    outputChannel.appendLine(
-      `[e2mcp] Warning: config not found (${e.message}). Using defaults.`
-    );
-    config = {
-      workspace: "",
-      projectRootPath: "",
-      defaultProject: "headc-fw",
-      buildConfig: "HardwareDebug",
-      buildMode: "make",
-      buildJobs: 16,
-      toolchain: { ccrxPath: "", e2studioPath: "", makePath: "" },
-      flash: {
-        debugger: "E2Lite",
-        device: "R5F5651E",
-        gdbPort: 61234,
-        debugToolsPath: "",
-        python3BinPath: "",
-        gdbExecutable: "rx-elf-gdb",
-        inputClock: "24.0",
-        idCode: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
-      },
-    };
-  }
+  config = loadConfig();
+  outputChannel.appendLine(
+    `[e2mcp] Config loaded: workspace=${config.workspace}, projectsRoot=${config.projectRootPath}, project=${config.defaultProject}`
+  );
 
   // ADM Virtual Console
   admConsole = new ADMConsole(context);
