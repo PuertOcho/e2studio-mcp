@@ -623,7 +623,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     <div class="path-row">
       <div class="path-value" title="${this.esc(projectRootPath)}">${this.esc(projectRootPath)}</div>
       <div class="actions-row">
-        <button class="action-btn secondary" onclick="postMsg('selectProjectsFolder')">Select Folder</button>
+        <button class="action-btn" onclick="postMsg('selectProjectsFolder')">Select Folder</button>
       </div>
     </div>
     ${this.projects.length > 0 ? projectRadios : `<div class="placeholder">No projects found in the selected folder.</div>`}

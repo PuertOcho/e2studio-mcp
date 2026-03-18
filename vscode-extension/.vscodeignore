@@ -6,3 +6,6 @@ package-lock.json
 .gitignore
 **/*.map
 **/*.ts
+resources/icon.png
+resources/icon.svg
+resources/E2_MCP_v1.svg

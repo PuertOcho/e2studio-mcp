@@ -2,7 +2,7 @@
   "name": "e2mcp",
   "displayName": "E2 MCP — Build, Flash & Debug",
   "description": "Renesas RX development: virtual console, project selector, build/flash integration for E2 Lite / E1 / J-Link",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "publisher": "PuertOcho",
   "license": "SEE LICENSE IN LICENSE.txt",
   "repository": {
@@ -25,6 +25,11 @@
     "e2-lite",
     "j-link"
   ],
+  "icon": "resources/E2_MCP.png",
+  "galleryBanner": {
+    "color": "#1e293b",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -34,8 +39,7 @@
   ],
   "activationEvents": [
     "workspaceContains:**/.cproject",
-    "onDebugResolve:renesas-hardware",
-    "onView:e2mcp.panel"
+    "onDebugResolve:renesas-hardware"
   ],
   "extensionDependencies": [
     "renesaselectronicscorporation.renesas-debug"
@@ -47,7 +51,7 @@
         {
           "id": "e2mcp",
           "title": "E2 MCP",
-          "icon": "resources/icon.svg"
+          "icon": "resources/E2_MCP_bar.png"
         }
       ]
     },
@@ -173,7 +177,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "@vscode/vsce": "^2.24.0",
+    "@vscode/vsce": "^2.32.0",
     "esbuild": "^0.20.0",
     "typescript": "^5.3.0"
   },
