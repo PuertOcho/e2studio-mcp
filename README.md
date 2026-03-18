@@ -199,9 +199,11 @@ Notes:
 
 - `buildMode` supports `make` and `e2studioc`
 - `buildJobs: 0` enables CPU-based auto-detection with a cap of `16`
-- `devices` is used to calculate ROM, RAM and DataFlash percentages
+- `devices` is used to calculate ROM, RAM and DataFlash percentages in `get_build_size` and `get_map_summary`
+- `flash` values are **fallback defaults**. When a project contains an e2 Studio `.launch` file, the device, debugger, port and server parameters are read from there instead. The `.launch` file always takes priority
 - `python3BinPath` points to the embedded Renesas Python required by `e2-server-gdb`
 - if `debugToolsPath` is omitted, the server tries known auto-detection paths
+- toolchain paths (`ccrxPath`, `e2studioPath`, `makePath`, `debugToolsPath`, `python3BinPath`) are auto-detected if omitted
 
 ## Run The MCP Server
 

@@ -24,28 +24,19 @@
       "family": "RX651",
       "romSize": 2097152,
       "ramSize": 655360,
-      "dataFlashSize": 32768,
-      "romRange": "FFF00000-FFFFFFFF",
-      "ramRange": "00000000-0009FFFF",
-      "dataFlashRange": "00100000-00107FFF"
+      "dataFlashSize": 32768
     },
     "R5F565NE": {
       "family": "RX65N",
       "romSize": 2097152,
       "ramSize": 655360,
-      "dataFlashSize": 32768,
-      "romRange": "FFF00000-FFFFFFFF",
-      "ramRange": "00000000-0009FFFF",
-      "dataFlashRange": "00100000-00107FFF"
+      "dataFlashSize": 32768
     },
     "R5F572NNDxBD": {
       "family": "RX72N",
       "romSize": 4194304,
       "ramSize": 1048576,
-      "dataFlashSize": 32768,
-      "romRange": "FFC00000-FFFFFFFF",
-      "ramRange": "00000000-000FFFFF",
-      "dataFlashRange": "00100000-00107FFF"
+      "dataFlashSize": 32768
     }
   }
 }

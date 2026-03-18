@@ -34,9 +34,6 @@ class DeviceInfo:
     rom_size: int = 0
     ram_size: int = 0
     data_flash_size: int = 0
-    rom_range: str = ""
-    ram_range: str = ""
-    data_flash_range: str = ""
 
 
 @dataclass
@@ -109,9 +106,6 @@ def _parse_devices(data: dict[str, Any]) -> dict[str, DeviceInfo]:
             rom_size=info.get("romSize", 0),
             ram_size=info.get("ramSize", 0),
             data_flash_size=info.get("dataFlashSize", 0),
-            rom_range=info.get("romRange", ""),
-            ram_range=info.get("ramRange", ""),
-            data_flash_range=info.get("dataFlashRange", ""),
         )
     return devices
 
