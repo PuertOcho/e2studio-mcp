@@ -1,94 +1,166 @@
-# e2studio-mcp
+# E2 MCP for Renesas RX
 
-Servidor MCP e integración con VS Code para desarrollo **Renesas RX con e2 Studio**.
+E2 MCP is an MCP server and VS Code integration layer for Renesas RX development with e2 Studio.
 
-Este proyecto ofrece un flujo de trabajo orientado a firmware para:
+It is built for a practical workflow:
 
-- compilar proyectos e2 Studio en modo headless (`make` o `e2studioc`)
-- inspeccionar configuración de proyecto y uso de memoria desde `.map`
-- grabar firmware `.mot` usando `e2-server-gdb` mediante protocolo RSP directo
-- exponer herramientas y recursos MCP para automatización asistida por IA
-- usar una extensión opcional de VS Code para build/flash/debug
+- an MCP client or AI assistant can build, inspect, flash, debug and read target output
+- VS Code keeps the selected project, build configuration, launch file and debugger grounded in the real workspace
+- the optional sidebar gives the user manual control over the exact same operations
 
-## Arquitectura
+The result is a single execution path for both human-driven and MCP-driven firmware work.
+
+## What This Repository Contains
+
+This repository is split into two cooperating parts:
+
+- `src/e2studio_mcp/`: the Python MCP server that exposes tools and resources
+- `vscode-extension/`: the VS Code extension that anchors Renesas project state and hardware actions inside the editor
+
+If you only look at the extension, you miss the MCP server.
+
+If you only look at the MCP server, you miss the editor-side state that makes build, flash and debug reliable.
+
+## MCP-First Workflow
+
+E2 MCP is not designed as a generic build helper with an AI layer added later.
+
+The intended flow is:
+
+1. Open a Renesas workspace in VS Code
+2. Let the extension detect or load the toolchain and available projects
+3. Select the active project, build configuration, launch file and debugger once
+4. Use MCP tools to build, inspect memory, flash firmware, start debug or read the ADM console
+5. Fall back to the sidebar whenever you want direct manual control
+
+That keeps the MCP client aligned with the same project state the user sees in the editor.
+
+## Core Capabilities
+
+- Build e2 Studio projects through `make` or `e2studioc`
+- Discover projects and parse `.cproject` metadata
+- Read linker `.map` files and compute ROM, RAM and DataFlash usage
+- Start or stop Renesas debug sessions through the VS Code extension
+- Flash `.mot` output using the Renesas debug stack
+- Capture ADM virtual console output from the target
+- Expose all of the above as MCP tools and resources
+
+## Architecture
 
 ```text
-VS Code / Cliente MCP
-        |
-        | stdio (MCP)
-        v
-e2studio_mcp.server (Python)
-  |- Build tools (make / e2studioc)
-  |- Parser de proyectos (.cproject)
-  |- Parser de mapas (.map)
-  |- Gestor de flash/debug (e2-server-gdb + RSP)
-        |
-        v
-Toolchain Renesas + hardware objetivo (E2 Lite / E1 / E2 / J-Link)
+VS Code / MCP Client / AI Assistant
+               |
+               | MCP
+               v
+       e2studio_mcp.server
+               |
+               +-- build.py      -> make / e2studioc backends
+               +-- project.py    -> .cproject parsing and project discovery
+               +-- mapfile.py    -> linker map parsing and memory summaries
+               +-- flash.py      -> e2-server-gdb / flash / session control
+               +-- adm.py        -> virtual console capture
+               |
+               v
+   VS Code extension state + Renesas toolchain + target hardware
 ```
 
-## Capacidades Principales
+## MCP Tools
 
-- Build pipeline: `build_project`, `clean_project`, `rebuild_project`, `get_build_status`
-- Análisis de memoria: `get_build_size`, `get_map_summary`, `get_linker_sections`
-- Metadatos de proyecto: `list_projects`, `get_project_config`
-- Flash/debug: `debug_start`, `debug_stop`, `debug_status`
-- Consola ADM: `get_adm_log`
-- Recursos MCP:
-  - `e2studio://build/log`
-  - `e2studio://debug/adm/log`
-  - `e2studio://project/memory`
-  - `e2studio://project/config`
-  - `e2studio://activity/log`
+### Build
 
-## Requisitos
+- `build_project(project?, config?, mode?)`
+- `clean_project(project?, config?, mode?)`
+- `rebuild_project(project?, config?, mode?)`
+- `get_build_status(project?)`
 
-- Windows (target principal)
+### Project And Memory
+
+- `list_projects()`
+- `get_project_config(project?, config?)`
+- `get_build_size(project?, config?)`
+- `get_map_summary(project?, config?)`
+- `get_linker_sections(project?, config?)`
+
+### Flash And Debug
+
+- `debug_start(project?)`
+- `debug_stop()`
+- `debug_status()`
+- `get_adm_log(port?, wait_seconds?, duration_ms?, poll_ms?, max_bytes?)`
+
+## MCP Resources
+
+- `e2studio://build/log`
+- `e2studio://debug/adm/log`
+- `e2studio://project/memory`
+- `e2studio://project/config`
+- `e2studio://activity/log`
+
+## VS Code Extension
+
+The extension in `vscode-extension/` is the editor-side control plane for the MCP workflow.
+
+It provides:
+
+- project selection
+- build configuration selection
+- launch file selection
+- debugger selection
+- manual Build, Clean, Rebuild, Flash, Debug and Stop actions
+- virtual console output access
+- workspace-aware state that MCP clients can reuse safely
+
+The current Marketplace-facing README for the extension lives in `vscode-extension/README.md`.
+
+## Requirements
+
+- Windows
 - Python `>= 3.10`
-- Instalación de Renesas e2 Studio
-- Toolchain RX (`CCRX`, `make`, `e2-server-gdb`, `rx-elf-gdb`)
-- Workspace e2 Studio con proyectos que incluyan `.cproject`
+- Renesas e2 Studio installed
+- Renesas RX toolchain available: `CCRX`, `make`, `e2-server-gdb`, `rx-elf-gdb`
+- A workspace containing Renesas e2 Studio projects with `.cproject` files
+- For VS Code debug integration: `renesaselectronicscorporation.renesas-debug`
 
-## Estructura del Repositorio
+## Repository Layout
 
 ```text
 e2studio-mcp/
   src/e2studio_mcp/
-    server.py          # Servidor MCP y registro de tools/resources
-    build.py           # Backends de compilación y parsing de diagnósticos
-    project.py         # Parsing de .cproject y discovery de proyectos
-    mapfile.py         # Parsing de .map y resúmenes de memoria
-    flash.py           # Sesión e2-server-gdb y grabación por RSP
-    adm.py             # Cliente ADM / consola virtual SimulatedIO
-    config.py          # Carga de configuración JSON
-  tests/               # Tests unitarios + smoke test
-  scripts/             # Utilidades de soporte
-  vscode-extension/    # Extensión VS Code opcional (UI + comandos)
-  e2studio-mcp.json    # Configuración de ejecución
+    server.py
+    build.py
+    project.py
+    mapfile.py
+    flash.py
+    adm.py
+    config.py
+  tests/
+  scripts/
+  vscode-extension/
+  e2studio-mcp.json
 ```
 
-## Instalación
+## Install The Python Server
 
 ```powershell
 cd e2Studio_2024_workspace/e2studio-mcp
 py -3 -m pip install -e .
 ```
 
-Dependencias de desarrollo (opcional):
+Optional development dependencies:
 
 ```powershell
 py -3 -m pip install -e .[dev]
 ```
 
-## Configuración
+## Configuration
 
-El servidor resuelve la configuración en este orden:
+The server resolves configuration in this order:
 
-1. ruta explícita (si se usa programáticamente)
-2. variable de entorno `E2STUDIO_MCP_CONFIG`
-3. archivo local `e2studio-mcp.json` en la raíz del proyecto
+1. explicit path passed programmatically
+2. `E2STUDIO_MCP_CONFIG` environment variable
+3. local `e2studio-mcp.json` in the repository root
 
-### Ejemplo mínimo
+### Minimal Example
 
 ```json
 {
@@ -123,74 +195,28 @@ El servidor resuelve la configuración en este orden:
 }
 ```
 
-Notas:
+Notes:
 
-- `buildMode` soporta `make` o `e2studioc`.
-- `buildJobs: 0` activa autodetección por núcleos lógicos, con tope de `16` para parecerse al comportamiento de e2 Studio.
-- `devices` define capacidades por dispositivo; se usan para calcular porcentajes ROM/RAM/DataFlash.
-- `gdbExecutable` es el binario GDB (default: `rx-elf-gdb`; se busca en PATH o en rutas de toolchain).
-- `python3BinPath` apunta al Python embebido de Renesas, requerido por `e2-server-gdb`.
-- Si no se define `debugToolsPath`, se intentan rutas de autodetección conocidas.
+- `buildMode` supports `make` and `e2studioc`
+- `buildJobs: 0` enables CPU-based auto-detection with a cap of `16`
+- `devices` is used to calculate ROM, RAM and DataFlash percentages
+- `python3BinPath` points to the embedded Renesas Python required by `e2-server-gdb`
+- if `debugToolsPath` is omitted, the server tries known auto-detection paths
 
-## Ejecución del Servidor MCP
+## Run The MCP Server
 
 ```powershell
 cd e2Studio_2024_workspace/e2studio-mcp
 py -3 -m e2studio_mcp.server
 ```
 
-También se puede iniciar con:
+Or:
 
 ```powershell
 py -3 -m e2studio_mcp
 ```
 
-## Referencia de Herramientas MCP
-
-| Grupo | Tool | Descripción |
-|---|---|---|
-| Build | `build_project(project?, config?, mode?)` | Compila usando `make` o `e2studioc` |
-| Build | `clean_project(project?, config?, mode?)` | Limpia artefactos de compilación |
-| Build | `rebuild_project(project?, config?, mode?)` | Ejecuta clean + build |
-| Build | `get_build_status(project?)` | Errores y warnings de la última compilación |
-| Build | `get_build_size(project?, config?)` | Uso ROM/RAM/DataFlash desde `.map` |
-| Project | `list_projects()` | Descubre proyectos dentro del workspace |
-| Project | `get_project_config(project?, config?)` | Parsea detalles de `.cproject` |
-| Map | `get_map_summary(project?, config?)` | Resumen de secciones + porcentajes |
-| Map | `get_linker_sections(project?, config?)` | Detalle individual de secciones de linker |
-| Flash | `debug_start(project?)` | Inicia sesión de debug (build + flash + debug) vía extensión VS Code |
-| Flash | `debug_stop()` | Detiene la sesión de debug activa |
-| Flash | `debug_status()` | Estado actual de la sesión |
-| Debug | `get_adm_log(port?, wait_seconds?, duration_ms?, poll_ms?, max_bytes?)` | Lee un snapshot del buffer ADM / consola virtual |
-
-## Extensión VS Code (Opcional)
-
-La carpeta `vscode-extension/` incluye un panel lateral y comandos para selección de proyecto, build, flash y debug.
-
-La extensión puede usar una carpeta de proyectos Renesas distinta de la definida en `e2studio-mcp.json` mediante el ajuste `e2mcp.projectsPath` o el comando `E2 MCP: Select Projects Folder`.
-
-Los requisitos funcionales abiertos de estabilización se consolidan en `STABILIZATION_REQUIREMENTS.md` para separar comportamiento actual de decisiones aún no cerradas.
-
-El flujo previsto en la extensión es:
-
-- seleccionar proyecto detectado automáticamente dentro del workspace e2 Studio
-- seleccionar `buildConfig` real a partir de carpetas de salida con `Makefile`
-- seleccionar `.launch` concreto o dejar `Auto-detect` para priorizar `*HardwareDebug*`
-- lanzar `Build`, `Clean`, `Rebuild`, `Flash` o `Debug` usando esa selección activa
-- `Flash` graba el firmware sin iniciar sesión de debug (build automática + flash vía e2-server-gdb)
-- `Debug` equivale a `Flash+Run` con sesión de debug activa
-
-### Nota sobre Memory
-
-La sección `Memory` del panel no es un mock.
-
-- El uso `ROM/RAM/DataFlash` sale del `.map` real generado por el build.
-- Las capacidades totales salen de `devices` en `e2studio-mcp.json`.
-- Si el dispositivo no está definido ahí, la extensión usa fallback conservador por defecto.
-
-Por tanto, los bytes usados son datos reales del linker; lo que conviene mantener bien configurado es la tabla `devices` para que los porcentajes sean exactos en proyectos nuevos.
-
-### Compilar la extensión
+## Extension Build
 
 ```powershell
 cd e2Studio_2024_workspace/e2studio-mcp/vscode-extension
@@ -198,24 +224,18 @@ npm install
 npm run compile
 ```
 
-### Ajustes de la extensión
-
-- `e2mcp.configPath`: ruta a `e2studio-mcp.json`
-- `e2mcp.projectsPath`: carpeta que contiene los proyectos e2 Studio / Renesas a mostrar en el panel
-- `e2mcp.pythonPath`: ejecutable de Python (`py`, `python3`, `python`)
-- `e2mcp.consolePollMs`: intervalo de sondeo de consola virtual
-- `buildJobs` en `e2studio-mcp.json`: número de compilaciones paralelas para `make`. Usa `0` para modo automático según CPU, con máximo `16`.
-
 ## Testing
 
-Ejecutar tests unitarios:
+Run unit tests:
 
 ```powershell
 cd e2Studio_2024_workspace/e2studio-mcp
 py -3 -m pytest -q
 ```
 
-Ejecutar smoke test (parsing real del workspace):
+## License
+
+Proprietary. See `LICENSE.txt`.
 
 ```powershell
 cd e2Studio_2024_workspace/e2studio-mcp
