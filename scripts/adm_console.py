@@ -22,6 +22,7 @@ def run_console(
     poll_ms: int = 500,
     raw: bool = False,
     connect_retries: int = 10,
+    logfile: str | None = None,
 ):
     if not raw:
         print(f"[*] Connecting to ADM SimulatedIO on localhost:{port}...")
@@ -72,6 +73,35 @@ def run_console(
     if not raw:
         print(f"[*] Polling for output every {poll_ms}ms (Ctrl+C to stop)\n")
 
+    # In --raw mode, auto-tee to a well-known logfile so the MCP server
+    # can read the ADM output without holding its own TCP connection.
+    log_path = Path(logfile) if logfile else (ROOT / ".adm-log" if raw else None)
+    log_fh = None
+    LOG_MAX = 128 * 1024
+    LOG_KEEP = 64 * 1024
+    if log_path:
+        try:
+            log_fh = open(log_path, "a", encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"Cannot open logfile {log_path}: {exc}", file=sys.stderr)
+
+    def _tee_log(text: str) -> None:
+        """Write text to the logfile with size-capped rotation."""
+        nonlocal log_fh
+        if log_fh is None:
+            return
+        try:
+            log_fh.write(text)
+            log_fh.flush()
+            # Rotate when file exceeds LOG_MAX
+            if log_path and log_path.stat().st_size > LOG_MAX:
+                log_fh.close()
+                content = log_path.read_text(encoding="utf-8", errors="replace")
+                log_path.write_text(content[-LOG_KEEP:], encoding="utf-8")
+                log_fh = open(log_path, "a", encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+
     poll_interval = poll_ms / 1000.0
     idle_count = 0
     try:
@@ -83,6 +113,7 @@ def run_console(
                     text = data.decode("ascii", errors="replace")
                     sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
                     sys.stdout.buffer.flush()
+                    _tee_log(text)
                 except Exception:
                     print(f"[binary {len(data)}B] {data.hex(' ')}")
             else:
@@ -96,6 +127,11 @@ def run_console(
         if not raw:
             print("\n[*] Stopping...")
     finally:
+        if log_fh:
+            try:
+                log_fh.close()
+            except OSError:
+                pass
         try:
             client.disable()
         except Exception:
@@ -137,6 +173,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Raw mode: only output target text, no diagnostics. For VS Code extension.",
     )
+    parser.add_argument(
+        "--logfile",
+        type=str,
+        default=None,
+        help="Path to tee output to (default: auto in --raw mode -> e2studio-mcp/.adm-log).",
+    )
     args = parser.parse_args()
 
     selected_port = args.port
@@ -155,4 +197,4 @@ if __name__ == "__main__":
             print(f"[*] Found e2-server-gdb PID {pid}, ADM port {selected_port}")
 
     run_console(selected_port, verbose=args.verbose, poll_ms=args.poll,
-                raw=args.raw)
+                raw=args.raw, logfile=args.logfile)

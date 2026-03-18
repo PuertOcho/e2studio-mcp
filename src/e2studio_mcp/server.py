@@ -430,6 +430,8 @@ def get_adm_log(
     duration_ms: int = 1000,
     poll_ms: int = 250,
     max_bytes: int = 8192,
+    tail_lines: int = 0,
+    filter: str = "",
 ) -> dict:
     """Capture a snapshot of the ADM virtual console output.
 
@@ -442,17 +444,50 @@ def get_adm_log(
         duration_ms: How long to poll for new output (default: 1000)
         poll_ms: Poll interval in milliseconds (default: 250)
         max_bytes: Maximum bytes to return before truncating (default: 8192)
+        tail_lines: Return only the last N lines (0 = all)
+        filter: Return only lines containing this substring (case-insensitive)
 
     Returns:
         Snapshot with text, port, bytesRead, durationMs, and truncation state.
     """
+    def _apply_tail_filter(text: str) -> str:
+        """Apply tail_lines and filter to text."""
+        if not text:
+            return text
+        lines = text.splitlines(keepends=True)
+        if filter:
+            needle = filter.lower()
+            lines = [l for l in lines if needle in l.lower()]
+        if tail_lines > 0:
+            lines = lines[-tail_lines:]
+        return "".join(lines)
+
     # Try bridge first — the extension's ADMConsole already holds the TCP
     # connection and accumulates output in a ring buffer.
     result = bridge_mod.call_bridge(cfg.workspace_path, "getAdmLog", timeout=5)
     if result and result.get("success") and result.get("text"):
+        result["text"] = _apply_tail_filter(result["text"])
+        result["source"] = "bridge"
         return result
+
+    # Try the logfile left by adm_console.py (auto-tee in --raw mode)
+    logfile = cfg.workspace_path / "e2studio-mcp" / ".adm-log"
+    if logfile.is_file():
+        try:
+            text = logfile.read_text(encoding="utf-8", errors="replace")
+            text = _apply_tail_filter(text)
+            return {
+                "supported": True,
+                "text": text,
+                "source": "logfile",
+                "bytesRead": len(text),
+                "path": str(logfile),
+            }
+        except OSError:
+            pass
+
     # Fallback to direct TCP connection
-    return adm_mod.read_adm_log(
+    result = adm_mod.read_adm_log(
         port=port or None,
         pid=None,
         wait_seconds=wait_seconds,
@@ -461,6 +496,10 @@ def get_adm_log(
         max_bytes=max_bytes,
         gdb_port=61234,
     )
+    if result.get("text"):
+        result["text"] = _apply_tail_filter(result["text"])
+        result["source"] = "direct"
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════

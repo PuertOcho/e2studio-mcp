@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-18
+
+### Added
+
+- ADM console raw mode now tees output to `.adm-log`, allowing MCP log reads without opening a second TCP connection.
+- `get_adm_log` now supports `tail_lines` and `filter` for focused snapshots.
+
+### Changed
+
+- Extension workspace resolution now falls back from `e2mcp.workspace` to `e2mcp.projectsPath`.
+
+### Fixed
+
+- MCP `get_adm_log` now reads ADM output reliably from the bridge, the `.adm-log` tee file, or direct TCP fallback.
+- Local bridge runtime files `.bridge-port` and `.adm-log` are ignored by git.
+
 ## [0.2.0] - 2026-03-18
 
 ### Changed

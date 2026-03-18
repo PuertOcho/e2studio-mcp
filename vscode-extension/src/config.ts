@@ -112,8 +112,9 @@ export function loadConfig(): ExtensionConfig {
   const ccrxPath = s.get<string>("ccrxPath", "").trim() || detectCcrxPath();
   const makePath = s.get<string>("makePath", "").trim() || detectMakePath(e2studioPath);
 
-  const workspace = s.get<string>("workspace", "").trim();
+  const configuredWorkspace = s.get<string>("workspace", "").trim();
   const projectsPath = s.get<string>("projectsPath", "").trim();
+  const workspace = configuredWorkspace || projectsPath;
 
   return {
     workspace,
