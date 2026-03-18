@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-18
+
+### Added
+
+- VS Code packaging now bundles the Python backend and `adm_console.py` inside the `.vsix` for self-contained installs.
+
+### Changed
+
+- Extension runtime files now live under `.e2mcp/` in the configured projects root instead of assuming an `e2studio-mcp/` checkout exists there.
+- `findMcpJson()` now checks the configured projects root directly before falling back to the legacy repo layout.
+
+### Fixed
+
+- Installed `.vsix` deployments no longer depend on a sibling `e2studio-mcp` repository for bridge discovery or ADM log fallback.
+
 ## [0.2.1] - 2026-03-18
 
 ### Added

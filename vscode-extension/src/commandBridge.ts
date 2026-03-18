@@ -26,7 +26,10 @@ export class CommandBridge implements vscode.Disposable {
     private viewProvider: E2McpViewProvider,
     private admConsole?: ADMConsole,
   ) {
-    this.portFilePath = path.join(workspace, "e2studio-mcp", ".bridge-port");
+    const runtimeRoot = workspace
+      ? path.join(workspace, ".e2mcp")
+      : path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? ".", ".e2mcp");
+    this.portFilePath = path.join(runtimeRoot, ".bridge-port");
   }
 
   async start(): Promise<number> {

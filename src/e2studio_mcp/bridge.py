@@ -1,7 +1,7 @@
 """Client for the VS Code extension command bridge.
 
 When the extension is running, its HTTP bridge port is written to
-``<workspace>/e2studio-mcp/.bridge-port``.  Action tools (build, clean,
+``<workspace>/.e2mcp/.bridge-port``. Action tools (build, clean,
 rebuild) POST commands to this bridge so they reuse the exact same
 ``make`` invocation and environment as the extension UI buttons.
 
@@ -20,7 +20,7 @@ from typing import Any
 
 def _read_bridge_port(workspace: Path) -> int | None:
     """Read the bridge port from the well-known file."""
-    port_file = workspace / "e2studio-mcp" / ".bridge-port"
+    port_file = workspace / ".e2mcp" / ".bridge-port"
     try:
         text = port_file.read_text().strip()
         return int(text)

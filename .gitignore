@@ -11,5 +11,6 @@ venv/
 .env
 *.log
 stderr.txt
+.e2mcp/
 .bridge-port
 .adm-log

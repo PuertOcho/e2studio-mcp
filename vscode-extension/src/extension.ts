@@ -596,10 +596,13 @@ function findMcpJson(): string | undefined {
     const candidate = path.join(folder.uri.fsPath, ".vscode", "mcp.json");
     if (fs.existsSync(candidate)) return candidate;
   }
-  // Also try inside e2studio-mcp itself
+  // Also try the configured projects root when it is not the opened workspace.
   if (config) {
-    const candidate = path.join(config.workspace, "e2studio-mcp", ".vscode", "mcp.json");
-    if (fs.existsSync(candidate)) return candidate;
+    const directCandidate = path.join(config.workspace, ".vscode", "mcp.json");
+    if (fs.existsSync(directCandidate)) return directCandidate;
+
+    const legacyCandidate = path.join(config.workspace, "e2studio-mcp", ".vscode", "mcp.json");
+    if (fs.existsSync(legacyCandidate)) return legacyCandidate;
   }
   return undefined;
 }

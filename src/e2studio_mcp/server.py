@@ -471,7 +471,7 @@ def get_adm_log(
         return result
 
     # Try the logfile left by adm_console.py (auto-tee in --raw mode)
-    logfile = cfg.workspace_path / "e2studio-mcp" / ".adm-log"
+    logfile = cfg.workspace_path / ".e2mcp" / ".adm-log"
     if logfile.is_file():
         try:
             text = logfile.read_text(encoding="utf-8", errors="replace")

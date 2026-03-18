@@ -75,12 +75,13 @@ def run_console(
 
     # In --raw mode, auto-tee to a well-known logfile so the MCP server
     # can read the ADM output without holding its own TCP connection.
-    log_path = Path(logfile) if logfile else (ROOT / ".adm-log" if raw else None)
+    log_path = Path(logfile) if logfile else (ROOT / ".e2mcp" / ".adm-log" if raw else None)
     log_fh = None
     LOG_MAX = 128 * 1024
     LOG_KEEP = 64 * 1024
     if log_path:
         try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
             log_fh = open(log_path, "a", encoding="utf-8", errors="replace")
         except OSError as exc:
             print(f"Cannot open logfile {log_path}: {exc}", file=sys.stderr)
@@ -177,7 +178,7 @@ if __name__ == "__main__":
         "--logfile",
         type=str,
         default=None,
-        help="Path to tee output to (default: auto in --raw mode -> e2studio-mcp/.adm-log).",
+        help="Path to tee output to (default: auto in --raw mode -> .e2mcp/.adm-log).",
     )
     args = parser.parse_args()
 

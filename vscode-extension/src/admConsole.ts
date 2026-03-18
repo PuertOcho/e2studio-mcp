@@ -108,7 +108,8 @@ export class ADMConsole implements vscode.Disposable {
       return;
     }
 
-    const args = [scriptPath, "--raw", "--poll", String(pollMs)];
+    const logfilePath = this.getRuntimeLogPath();
+    const args = [scriptPath, "--raw", "--poll", String(pollMs), "--logfile", logfilePath];
 
     this.channel.appendLine(
       `[console] Spawning: ${pythonPath} ${args.join(" ")}`
@@ -155,6 +156,22 @@ export class ADMConsole implements vscode.Disposable {
       this.channel.appendLine(`[console] Process error: ${err.message}`);
       this.proc = undefined;
     });
+  }
+
+  private getRuntimeLogPath(): string {
+    const configuredWorkspace = vscode.workspace
+      .getConfiguration("e2mcp")
+      .get<string>("workspace", "")
+      .trim();
+    const configuredProjectsPath = vscode.workspace
+      .getConfiguration("e2mcp")
+      .get<string>("projectsPath", "")
+      .trim();
+    const workspaceRoot = configuredWorkspace
+      || configuredProjectsPath
+      || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      || this.context.extensionPath;
+    return path.join(workspaceRoot, ".e2mcp", ".adm-log");
   }
 
   /**

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "e2studio-mcp"
-version = "0.1.0"
+version = "0.2.2"
 description = "MCP server for controlling e2 Studio / Renesas RX from VS Code"
 requires-python = ">=3.10"
 dependencies = [
