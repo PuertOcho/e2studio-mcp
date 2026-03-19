@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.7 — 2026-03-19
+
+- Rename “Project” section to “Projects” and add info tooltip explaining the folder purpose
+- Suppress “Stale e2-server-gdb” warning banner during debug startup (covers the gap before session is established)
+
 ## 0.2.6 — 2026-03-19
 
 - Skip build before debug when the binary (.x) already exists — launch directly with the existing build

@@ -17,6 +17,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private selectedLaunchFile = "";
   private mcpEnabled = true;
   private debugActive = false;
+  private debugStarting = false;
   private probeStatus: "ok" | "warning" | "disconnected" | "unknown" = "unknown";
   private probeStatusText = "";
   private probeCheckTimer?: ReturnType<typeof setInterval>;
@@ -87,7 +88,12 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
 
   setDebugActive(debugActive: boolean): void {
     this.debugActive = debugActive;
+    this.debugStarting = false;
     this.view?.webview.postMessage({ command: "setDebugState", debugActive });
+  }
+
+  setDebugStarting(starting: boolean): void {
+    this.debugStarting = starting;
   }
 
   async refreshProjectsAndRender(): Promise<void> {
@@ -190,7 +196,7 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         try {
           const raw = JSON.parse(stdout.trim());
           const devArr: { Status: string; FriendlyName: string }[] = Array.isArray(raw.devices) ? raw.devices : [];
-          const hasZombie = !!raw.zombie && !this.debugActive;
+          const hasZombie = !!raw.zombie && !this.debugActive && !this.debugStarting;
 
           if (devArr.length === 0) {
             if (!this.debugActive) {
@@ -488,6 +494,16 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       opacity: 1;
     }
 
+    /* Info icon */
+    .info-icon {
+      opacity: 0.5;
+      cursor: help;
+      font-size: 12px;
+    }
+    .info-icon:hover {
+      opacity: 1;
+    }
+
     /* Collapsible sections */
     details.section {
       margin-bottom: var(--section-gap);
@@ -613,10 +629,11 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     </label>
   </div>
 
-  <!-- PROJECT -->
+  <!-- PROJECTS -->
   <div class="section">
     <div class="section-header">
-      Project
+      Projects
+      <span class="info-icon" title="Parent folder containing e2 Studio projects.&#10;Select the dedicated e2 Studio workspace folder, or create one if needed.">&#x24D8;</span>
       <span class="section-actions" onclick="postMsg('refresh')" title="Refresh projects">&#x21bb;</span>
     </div>
     <div class="path-row">

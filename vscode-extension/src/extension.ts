@@ -180,6 +180,7 @@ export function activate(context: vscode.ExtensionContext): void {
             if (!await warnIfE2StudioOpen()) break;
 
             viewProvider?.setBusy(true);
+            viewProvider?.setDebugStarting(true);
             const project = viewProvider?.currentProject || config.defaultProject;
             const buildConfig = viewProvider?.currentBuildConfig || config.buildConfig;
 
@@ -195,6 +196,7 @@ export function activate(context: vscode.ExtensionContext): void {
                     "Build failed. Debug session was not started."
                   );
                   viewProvider?.setBusy(false);
+                  viewProvider?.setDebugStarting(false);
                   break;
                 }
               }
@@ -204,6 +206,7 @@ export function activate(context: vscode.ExtensionContext): void {
               const started = await vscode.debug.startDebugging(folder, fullConfig, { suppressDebugView: true });
               if (!started) {
                 viewProvider?.setBusy(false);
+                viewProvider?.setDebugStarting(false);
                 vscode.window.showErrorMessage(
                   "Failed to start Renesas debug session."
                 );
@@ -211,6 +214,7 @@ export function activate(context: vscode.ExtensionContext): void {
               // setBusy(false) is handled by onDidStartDebugSession / onDidTerminateDebugSession
             } catch (e: any) {
               viewProvider?.setBusy(false);
+              viewProvider?.setDebugStarting(false);
               vscode.window.showErrorMessage(
                 `Debug startup failed: ${e.message}`
               );
