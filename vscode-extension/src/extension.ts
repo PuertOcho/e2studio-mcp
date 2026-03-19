@@ -59,21 +59,27 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    config.projectRootPath = folderPath;
-    await vscode.workspace
-      .getConfiguration("e2mcp")
-      .update("projectsPath", folderPath, vscode.ConfigurationTarget.Workspace);
-    outputChannel.appendLine(`[e2mcp] Projects folder: ${folderPath}`);
+    viewProvider.setBusy(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      config.projectRootPath = folderPath;
+      await vscode.workspace
+        .getConfiguration("e2mcp")
+        .update("projectsPath", folderPath, vscode.ConfigurationTarget.Workspace);
+      outputChannel.appendLine(`[e2mcp] Projects folder: ${folderPath}`);
 
-    if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
-      await disableMcpAndHardware(outputChannel);
-      vscode.window.showInformationMessage(
-        "Projects folder changed — hardware disconnected. Re-enable MCP to reconnect."
-      );
+      if (vscode.debug.activeDebugSession?.type === "renesas-hardware") {
+        await disableMcpAndHardware(outputChannel);
+        vscode.window.showInformationMessage(
+          "Projects folder changed — hardware disconnected. Re-enable MCP to reconnect."
+        );
+      }
+
+      viewProvider.refreshProjects();
+      viewProvider.updateWebview();
+    } finally {
+      viewProvider.setBusy(false);
     }
-
-    viewProvider.refreshProjects();
-    viewProvider.updateWebview();
   };
 
   // Webview sidebar panel

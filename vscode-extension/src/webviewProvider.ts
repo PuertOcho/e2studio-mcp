@@ -105,6 +105,17 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({ command: "setDebugState", debugActive });
   }
 
+  async refreshProjectsAndRender(): Promise<void> {
+    this.setBusy(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      this.refreshProjects();
+      this.updateWebview();
+    } finally {
+      this.setBusy(false);
+    }
+  }
+
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
 
@@ -121,27 +132,27 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     });
     webviewView.webview.html = this.getHtml();
 
-    webviewView.webview.onDidReceiveMessage((msg) => {
+    webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.command) {
         case "selectProject":
           this.setSelectedProject(msg.value);
-          this.onCommand("selectProject", { project: msg.value });
+          await this.onCommand("selectProject", { project: msg.value });
           this.updateWebview();
           break;
         case "selectDebugger":
           this.setSelectedDebugger(msg.value);
-          this.onCommand("selectDebugger", { debugger: msg.value });
+          await this.onCommand("selectDebugger", { debugger: msg.value });
           break;
         case "selectBuildConfig":
           this.setSelectedBuildConfig(msg.value);
-          this.onCommand("selectBuildConfig", { config: msg.value });
+          await this.onCommand("selectBuildConfig", { config: msg.value });
           break;
         case "selectProjectsFolder":
-          this.onCommand("selectProjectsFolder");
+          await this.onCommand("selectProjectsFolder");
           break;
         case "selectLaunchFile":
           this.setSelectedLaunchFile(msg.value);
-          this.onCommand("selectLaunchFile", { launchFile: msg.value });
+          await this.onCommand("selectLaunchFile", { launchFile: msg.value });
           break;
         case "build":
         case "clean":
@@ -149,14 +160,13 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
         case "flash":
         case "debug":
         case "stopDebug":
-          this.onCommand(msg.command);
+          await this.onCommand(msg.command);
           break;
         case "toggleMcp":
-          this.onCommand("toggleMcp");
+          await this.onCommand("toggleMcp");
           break;
         case "refresh":
-          this.refreshProjects();
-          this.updateWebview();
+          await this.refreshProjectsAndRender();
           break;
       }
     });

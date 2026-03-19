@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-03-19
+
+### Fixed
+
+- Project folder selection now shows the busy loading bar while projects are being scanned.
+- The sidebar project list now refreshes automatically after selecting a new projects folder, without requiring a manual refresh.
+
 ## [0.2.2] - 2026-03-18
 
 ### Added
