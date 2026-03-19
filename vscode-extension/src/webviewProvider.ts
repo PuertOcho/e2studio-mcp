@@ -181,8 +181,11 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
       const prev = this.probeStatus;
       const prevText = this.probeStatusText;
       if (!stdout || !stdout.trim()) {
-        this.probeStatus = "disconnected";
-        this.probeStatusText = `${debugger_} not detected — check USB connection`;
+        // During active debug the probe disconnects/reconnects normally — suppress banner
+        if (!this.debugActive) {
+          this.probeStatus = "disconnected";
+          this.probeStatusText = `${debugger_} not detected — check USB connection`;
+        }
       } else {
         try {
           const raw = JSON.parse(stdout.trim());
@@ -190,8 +193,10 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
           const hasZombie = !!raw.zombie && !this.debugActive;
 
           if (devArr.length === 0) {
-            this.probeStatus = "disconnected";
-            this.probeStatusText = `${debugger_} not detected — check USB connection`;
+            if (!this.debugActive) {
+              this.probeStatus = "disconnected";
+              this.probeStatusText = `${debugger_} not detected — check USB connection`;
+            }
           } else {
             const allOk = devArr.every((d: { Status: string }) => d.Status === "OK");
             if (allOk && !hasZombie) {

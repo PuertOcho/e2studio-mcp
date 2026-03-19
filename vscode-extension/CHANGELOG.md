@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5 — 2026-03-19
+
+- Suppress probe-disconnected banner during active debug sessions (E2 Lite normally disconnects/reconnects during debugging)
+
 ## 0.1.9 — 2026-03-18
 
 - Rewrite the Marketplace README to present the extension as MCP-first instead of a standalone utility

@@ -2,7 +2,7 @@
   "name": "e2mcp",
   "displayName": "E2 MCP — Build, Flash & Debug",
   "description": "Renesas RX development: virtual console, project selector, build/flash integration for E2 Lite / E1 / J-Link",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "PuertOcho",
   "license": "SEE LICENSE IN LICENSE.txt",
   "repository": {
