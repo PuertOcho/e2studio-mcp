@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 — 2026-03-19
+
+- Sync Marketplace documentation with the corrected stable README and current debug behavior
+
 ## 1.0.0 — 2026-03-19
 
 Stable release.
