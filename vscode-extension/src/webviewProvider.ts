@@ -15,8 +15,6 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
   private selectedDebugger = "E2LITE";
   private selectedBuildConfig = "HardwareDebug";
   private selectedLaunchFile = "";
-  private busy = false;
-  private busyTimeout?: ReturnType<typeof setTimeout>;
   private mcpEnabled = true;
   private debugActive = false;
   private probeStatus: "ok" | "warning" | "disconnected" | "unknown" = "unknown";
@@ -81,23 +79,10 @@ export class E2McpViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Set busy state — disables action buttons in the webview.
-   *  Includes a 30 s safety watchdog: if nothing clears busy within that
-   *  window, the UI auto-recovers so buttons never stay locked forever. */
+  /** Set busy state — disables action buttons in the webview until the
+   *  running action clears it explicitly. */
   setBusy(busy: boolean): void {
-    this.busy = busy;
     this.view?.webview.postMessage({ command: "setBusy", busy });
-    if (this.busyTimeout) {
-      clearTimeout(this.busyTimeout);
-      this.busyTimeout = undefined;
-    }
-    if (busy) {
-      this.busyTimeout = setTimeout(() => {
-        if (this.busy) {
-          this.setBusy(false);
-        }
-      }, 30_000);
-    }
   }
 
   setDebugActive(debugActive: boolean): void {

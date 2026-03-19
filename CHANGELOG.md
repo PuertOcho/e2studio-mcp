@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-03-19
+
+### Fixed
+
+- Removed the 30 second busy-state watchdog so the Actions loading bar stays visible until the running action actually finishes.
+
 ## [0.2.3] - 2026-03-19
 
 ### Fixed
