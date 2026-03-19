@@ -1,5 +1,7 @@
 # E2 MCP — Renesas RX Tools for MCP
 
+Stable release: 1.0.0
+
 E2 MCP is a **Model Context Protocol companion extension** for Renesas RX development in VS Code.
 
 It exposes **build, flash, debug and virtual console workflows** to MCP clients and AI assistants, while keeping project selection, debugger selection and Renesas toolchain state anchored inside the editor.
@@ -36,7 +38,7 @@ The sidebar is not the product by itself. Its role is to make MCP execution reli
 - **Project-aware sidebar** for selecting Renesas projects, debugger, build configuration and launch file
 - **Build / Clean / Rebuild** using CC-RX and GNU Make from the current workspace
 - **Flash firmware** through `e2-server-gdb` using the Renesas debug stack
-- **Debug sessions** with automatic build and flash before attach
+- **Debug sessions** with launch-file-aware startup, reusing an existing build when available
 - **Virtual Console (ADM)** for target output in a VS Code Output channel
 - **Automatic toolchain discovery** for e2 Studio, CCRX, debug tools and Python
 - **MCP integration** so AI assistants can operate Renesas RX projects through VS Code instead of shell scripts or ad-hoc commands

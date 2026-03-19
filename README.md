@@ -1,5 +1,7 @@
 # E2 MCP for Renesas RX
 
+Stable release: 1.0.0
+
 E2 MCP is an MCP server and VS Code integration layer for Renesas RX development with e2 Studio.
 
 It is built for a practical workflow:
