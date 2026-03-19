@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6 — 2026-03-19
+
+- Skip build before debug when the binary (.x) already exists — launch directly with the existing build
+
 ## 0.2.5 — 2026-03-19
 
 - Suppress probe-disconnected banner during active debug sessions (E2 Lite normally disconnects/reconnects during debugging)

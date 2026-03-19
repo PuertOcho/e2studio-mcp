@@ -184,15 +184,19 @@ export function activate(context: vscode.ExtensionContext): void {
             const buildConfig = viewProvider?.currentBuildConfig || config.buildConfig;
 
             try {
-              const buildResult = await buildRunner.build(project, buildConfig, "build");
-              viewProvider?.updateWebview();
+              // Skip build if a binary already exists — only build when needed
+              const binaryPath = path.join(config.projectRootPath, project, buildConfig, `${project}.x`);
+              if (!fs.existsSync(binaryPath)) {
+                const buildResult = await buildRunner.build(project, buildConfig, "build");
+                viewProvider?.updateWebview();
 
-              if (!buildResult.success) {
-                vscode.window.showWarningMessage(
-                  "Build failed. Debug session was not started."
-                );
-                viewProvider?.setBusy(false);
-                break;
+                if (!buildResult.success) {
+                  vscode.window.showWarningMessage(
+                    "Build failed. Debug session was not started."
+                  );
+                  viewProvider?.setBusy(false);
+                  break;
+                }
               }
 
               const fullConfig = debugProvider.buildConfig(project, true);
